@@ -13,7 +13,10 @@ use gpu::{ComputePipelineManager, GpuContext};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use telemetry::TelemetryCollector;
-use terminal::{format_resolution_tag, CliMenu, Hud, MenuAction, MenuConfig, TerminalRenderer};
+use terminal::{
+    format_resolution_tag, get_scene_math_model, CliMenu, Hud, HudMode, MenuAction, MenuConfig,
+    TerminalRenderer,
+};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -313,6 +316,9 @@ fn run_interactive_demo(
     let mut uncapped = initial_uncapped;
     let mut hud = Hud::new(term_width, scene_names[scene_id as usize].to_string());
     hud.resolution_label = res_tag.to_string();
+    hud.math_model = get_scene_math_model(scene_id).to_string();
+    hud.is_benchmark = false;
+    hud.is_uncapped = uncapped;
     let start_time = Instant::now();
     let mut frame_count: u32 = 0;
 
@@ -333,9 +339,23 @@ fn run_interactive_demo(
                     KeyCode::Char(' ') => {
                         scene_id = (scene_id + 1) % 6;
                         hud.scene_title = scene_names[scene_id as usize].to_string();
+                        hud.math_model = get_scene_math_model(scene_id).to_string();
                     }
                     KeyCode::Char('u') | KeyCode::Char('U') => {
                         uncapped = !uncapped;
+                        hud.is_uncapped = uncapped;
+                    }
+                    KeyCode::Char('h') | KeyCode::Char('H') => {
+                        let new_mode = hud.toggle_mode();
+                        let hud_rows = match new_mode {
+                            HudMode::Standard => 7,
+                            HudMode::Minimal => 2,
+                            HudMode::Hidden => 0,
+                        };
+                        if let Ok((_cols, rows)) = crossterm::terminal::size() {
+                            term_height = (rows.saturating_sub(hud_rows as u16) as usize * 2).max(16);
+                            term_preview_buf.resize(term_width * term_height * 4, 0);
+                        }
                     }
                     _ => {}
                 }
@@ -344,8 +364,13 @@ fn run_interactive_demo(
 
         // Check for terminal resize
         if let Ok((cols, rows)) = crossterm::terminal::size() {
+            let hud_rows = match hud.mode {
+                HudMode::Standard => 7,
+                HudMode::Minimal => 2,
+                HudMode::Hidden => 0,
+            };
             let target_w = cols as usize;
-            let target_h = (rows.saturating_sub(7) as usize * 2).max(16);
+            let target_h = (rows.saturating_sub(hud_rows as u16) as usize * 2).max(16);
             if target_w != term_width || target_h != term_height {
                 term_width = target_w;
                 term_height = target_h;
@@ -394,13 +419,10 @@ fn run_interactive_demo(
         if should_draw_terminal {
             last_terminal_draw = Instant::now();
             let frametime_ms = render_dur.as_secs_f32() * 1000.0;
-            hud.frametime_ms = frametime_ms;
-            hud.fps = if frametime_ms > 0.0 {
-                1000.0 / frametime_ms
-            } else {
-                60.0
-            };
-            hud.progress_pct = ((frame_count % 300) as f32 / 300.0) * 100.0;
+            hud.record_frametime(frametime_ms);
+            hud.demo_elapsed_secs = elapsed;
+            hud.demo_frame_count = frame_count as u64;
+            hud.is_uncapped = uncapped;
             let compute_pixels = (pipeline.width * pipeline.height) as f32;
             hud.rays_per_sec = (compute_pixels / (render_dur.as_secs_f32() + 1e-6)) / 1e9;
 
@@ -459,6 +481,9 @@ fn run_benchmark(
     let mut scene_results = Vec::new();
     let total_benchmark_start = Instant::now();
     let compute_pixels = (pipeline.width * pipeline.height) as u64;
+    let total_bench_frames = (frames_per_scene * 6).max(1);
+    let mut total_frames_completed: u32 = 0;
+    let mut cumulative_score: u64 = 0;
 
     let mut term_preview_buf = vec![0u8; term_width * term_height * 4];
     let mut nbody = NBodySimulation::new(32_000, pipeline.width as usize, pipeline.height as usize);
@@ -466,25 +491,37 @@ fn run_benchmark(
     for scene_id in 0..6u32 {
         let mut hud = Hud::new(term_width, scene_names[scene_id as usize].to_string());
         hud.resolution_label = res_tag.to_string();
+        hud.math_model = get_scene_math_model(scene_id).to_string();
+        hud.is_benchmark = true;
+        hud.act_index = (scene_id + 1) as usize;
+        hud.act_total = 6;
+        hud.current_score = cumulative_score;
 
         let scene_start = Instant::now();
         let mut last_terminal_draw = Instant::now();
 
         for frame_idx in 0..frames_per_scene {
-            // Check for exit abort key
+            // Check for exit abort key or HUD toggle
             if event::poll(Duration::from_millis(0))? {
                 if let Event::Key(key) = event::read()? {
-                    if key.code == KeyCode::Char('q') || key.code == KeyCode::Esc {
-                        crossterm::terminal::disable_raw_mode()?;
-                        renderer.leave_alternate_screen()?;
-                        println!("Benchmark aborted by user.");
-                        return Ok(());
+                    match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc => {
+                            crossterm::terminal::disable_raw_mode()?;
+                            renderer.leave_alternate_screen()?;
+                            println!("Benchmark aborted by user.");
+                            return Ok(());
+                        }
+                        KeyCode::Char('h') | KeyCode::Char('H') => {
+                            hud.toggle_mode();
+                        }
+                        _ => {}
                     }
                 }
             }
 
             let frame_start = Instant::now();
             let elapsed = scene_start.elapsed().as_secs_f32();
+            total_frames_completed += 1;
 
             // Decoupled 60 FPS Terminal preview
             let should_draw_terminal = last_terminal_draw.elapsed() >= Duration::from_millis(16)
@@ -527,9 +564,11 @@ fn run_benchmark(
                 if should_draw_terminal {
                     last_terminal_draw = Instant::now();
                     let frame_ms = frame_dur.as_secs_f32() * 1000.0;
-                    hud.frametime_ms = frame_ms;
-                    hud.fps = if frame_ms > 0.0 { 1000.0 / frame_ms } else { 0.0 };
-                    hud.progress_pct = ((frame_idx + 1) as f32 / frames_per_scene as f32) * 100.0;
+                    hud.record_frametime(frame_ms);
+                    let live_scene_score = scorer.current_scene_score(scene_id, compute_pixels);
+                    hud.current_score = cumulative_score + live_scene_score;
+                    hud.act_progress_pct = ((frame_idx + 1) as f32 / frames_per_scene as f32) * 100.0;
+                    hud.overall_progress_pct = (total_frames_completed as f32 / total_bench_frames as f32) * 100.0;
                     hud.rays_per_sec = (compute_pixels as f32 / (frame_dur.as_secs_f32() + 1e-6)) / 1e9;
 
                     let top_lines = hud.render_top();
@@ -543,7 +582,7 @@ fn run_benchmark(
                     )?;
                 }
             } else {
-                // Act IV: Multi-Threaded CPU N-Body Scene (32,000 celestial bodies)
+                // Act VI: Multi-Threaded CPU N-Body Scene (32,000 celestial bodies)
                 nbody.step_multithreaded(0.005);
                 let frame_dur = frame_start.elapsed();
 
@@ -559,9 +598,11 @@ fn run_benchmark(
                 if should_draw_terminal {
                     last_terminal_draw = Instant::now();
                     let frame_ms = frame_dur.as_secs_f32() * 1000.0;
-                    hud.frametime_ms = frame_ms;
-                    hud.fps = if frame_ms > 0.0 { 1000.0 / frame_ms } else { 0.0 };
-                    hud.progress_pct = ((frame_idx + 1) as f32 / frames_per_scene as f32) * 100.0;
+                    hud.record_frametime(frame_ms);
+                    let live_scene_score = scorer.current_scene_score(scene_id, compute_pixels);
+                    hud.current_score = cumulative_score + live_scene_score;
+                    hud.act_progress_pct = ((frame_idx + 1) as f32 / frames_per_scene as f32) * 100.0;
+                    hud.overall_progress_pct = (total_frames_completed as f32 / total_bench_frames as f32) * 100.0;
                     hud.rays_per_sec = (compute_pixels as f32 / (frame_dur.as_secs_f32() + 1e-6)) / 1e9;
 
                     nbody.rasterize_to_preview(&mut term_preview_buf, term_width, term_height);
@@ -584,6 +625,7 @@ fn run_benchmark(
             scene_names[scene_id as usize],
             compute_pixels,
         );
+        cumulative_score += scene_result.score;
         scene_results.push(scene_result);
     }
 

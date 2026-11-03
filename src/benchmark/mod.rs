@@ -73,6 +73,25 @@ impl BenchmarkScorer {
         }
     }
 
+    pub fn current_scene_score(&self, scene_id: u32, pixels_per_frame: u64) -> u64 {
+        let count = self.frametimes.len() as f64;
+        if count == 0.0 {
+            return 0;
+        }
+        let total_time_secs: f64 = self.frametimes.iter().map(|d| d.as_secs_f64()).sum();
+        if total_time_secs <= 0.0 {
+            return 0;
+        }
+        let weight = match scene_id {
+            0 => 1.0,
+            1 => 1.8,
+            2 => 1.4,
+            _ => 1.0,
+        };
+        let raw_workload = (count * pixels_per_frame as f64) * weight;
+        ((raw_workload / total_time_secs) / 100.0) as u64
+    }
+
     pub fn compute_scene_result(
         &mut self,
         scene_id: u32,
