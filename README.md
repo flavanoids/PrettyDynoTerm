@@ -3,17 +3,64 @@
 > **Cross-Platform Terminal GPU & CPU Benchmark Engine**  
 > High-performance 4K offscreen 3D raymarching, fractal calculus, relativistic astrophysics, atmospheric vortex dynamics, and cardiac electrophysiology rendered directly inside your terminal in 24-bit TrueColor.
 
+<p align="center">
+  <img src="assets/screenshots/menu.png" alt="PrettyDynoTerm Interactive CLI Launcher" width="780" />
+</p>
+
 ---
 
-## Features
+## Benchmark Acts & Mathematical Models
 
-- **Scientific Computational Physics & Biophysics Engine**:
-  - **Act I: Atmospheric Ocean Waves**: 14 Gerstner wave octaves, trochoidal crests, 48-step adiabatic cumulus cloud deck, and Henyey-Greenstein Mie radiative transfer.
-  - **Act II: The Mandelbulb Core**: Infinite recursive 3D fractal caverns ($z \mapsto z^8 + c$) testing raw GPU arithmetic logic and warp/wavefront branch divergence across 160 ray steps and 24 polynomial iterations.
-  - **Act III: Relativistic Black Hole**: 80 4th-order Runge-Kutta (RK4) curved spacetime geodesic integration steps around a Kerr black hole with frame-dragging and Novikov-Thorne accretion disk.
-  - **Act IV: Tornadic Mesocyclone (Weather Model)**: Burgers-Rott vortex dynamics, cyclostrophic pressure deficit balance ($\frac{dp}{dr} = \rho \frac{v_\theta^2}{r}$), adiabatic condensation funnel cloud, and surface debris friction layer.
-  - **Act V: Cardiac Electrophysiology (Medical Model)**: Aliev-Panfilov 2-variable reaction-diffusion PDE simulating 3D scroll-wave re-entry rotors (ventricular fibrillation) across anisotropic myocardial fibers with optical mapping fluorescence.
-  - **Act VI: Kinetic N-Body Supernova (CPU)**: 32,000 gravitational celestial bodies simulated across all CPU threads via Rayon, with velocity-based thermal heat gradient coloring.
+### Act I: Atmospheric Ocean Waves (GPU)
+14 Gerstner wave octaves, trochoidal crests, 48-step adiabatic cumulus cloud deck, Clausius-Clapeyron saturation vapor thermodynamics, and Henyey-Greenstein Mie radiative transfer.
+<p align="center">
+  <img src="assets/screenshots/act1_ocean_waves.png" alt="Act I: Atmospheric Ocean Waves" width="850" />
+</p>
+
+---
+
+### Act II: The Mandelbulb Core (GPU)
+Infinite recursive 3D fractal caverns ($z \mapsto z^8 + c$) testing raw GPU arithmetic logic and warp/wavefront branch divergence across 160 raymarch steps and 24 polynomial iterations.
+<p align="center">
+  <img src="assets/screenshots/act2_mandelbulb.png" alt="Act II: The Mandelbulb Core" width="850" />
+</p>
+
+---
+
+### Act III: Relativistic Black Hole (GPU)
+80 4th-order Runge-Kutta (RK4) curved spacetime geodesic integration steps around a spinning Kerr black hole with frame-dragging, gravitational redshift, and Novikov-Thorne accretion disk.
+<p align="center">
+  <img src="assets/screenshots/act3_black_hole.png" alt="Act III: Relativistic Black Hole" width="850" />
+</p>
+
+---
+
+### Act IV: Tornadic Mesocyclone (GPU - Weather Model)
+Navier-Stokes Burgers-Rott vortex dynamics ($v_\theta = \frac{\Gamma}{2\pi r}(1 - e^{-r^2/r_c^2})$), cyclostrophic pressure deficit balance ($\frac{dp}{dr} = \rho \frac{v_\theta^2}{r}$), adiabatic condensation funnel cloud, and surface debris boundary friction layer.
+<p align="center">
+  <img src="assets/screenshots/act4_tornado.png" alt="Act IV: Tornadic Mesocyclone" width="850" />
+</p>
+
+---
+
+### Act V: Cardiac Electrophysiology (GPU - Medical Model)
+Aliev-Panfilov 2-variable reaction-diffusion system ($\partial u / \partial t$, $\partial v / \partial t$) simulating 3D scroll-wave re-entry rotors (ventricular fibrillation) across a thick-walled left ventricle with $120^\circ$ transmural myocardial fiber pitch and optical mapping voltage fluorescence.
+<p align="center">
+  <img src="assets/screenshots/act5_cardiac.png" alt="Act V: Cardiac Electrophysiology" width="850" />
+</p>
+
+---
+
+### Act VI: Kinetic N-Body Supernova (CPU Rayon)
+24,000 gravitational celestial bodies simulated in parallel across all CPU cores/threads via Rayon, with collision dynamics, tidal tail dispersion, and velocity-based relativistic thermal heat gradient coloring.
+<p align="center">
+  <img src="assets/screenshots/act6_nbody.png" alt="Act VI: Kinetic N-Body Supernova" width="850" />
+</p>
+
+---
+
+## Core Engine Capabilities
+
 - **High-Performance 4K UHD Offscreen Compute**:
   - Defaults to computing at **3840×2160 (4K UHD)**—computing over **8.29 million pixels** per frame!
   - VRAM-native GPU compute downsampling to your terminal character grid using UTF-8 half-blocks (`▀`), providing extreme supersampling anti-aliasing (SSAA).
@@ -25,6 +72,10 @@
   - Fixed-workload execution (not an imprecise timed run).
   - Standardized score badge strictly comparable across systems.
   - Outputs detailed telemetry JSON logs (`dyno_benchmark_results.json`).
+
+<p align="center">
+  <img src="assets/screenshots/scorecard.png" alt="PrettyDynoTerm Official Benchmark Scorecard" width="780" />
+</p>
 
 ---
 
