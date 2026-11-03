@@ -42,38 +42,60 @@ The compiled binary will be located at `./target/release/dyno_term`.
 
 ## Usage
 
-### 1. Interactive Demo Mode (4K UHD Default)
+### 1. Interactive CLI Launcher Menu (Default)
+Simply running the binary without mode flags opens the full interactive terminal launcher:
+```bash
+./target/release/dyno_term
+```
+- **Menu Features**:
+  - **Launch Interactive Demo**: 60 FPS smooth preview with live telemetry HUD.
+  - **Launch 100% Uncapped Stress Test**: Uncapped frame pipeline to peg GPU to 100% power and boost clock.
+  - **Run Full Benchmark Suite**: Deterministic workload scoring with instant scorecard report.
+  - **Select Starting Scene**: Direct jump to Acts I through VI.
+  - **Compute Resolution Preset**: Switch on-the-fly between 16K, 8K, 4K UHD, 1440p, 1080p, 720p, Native Viewport, or Custom pixel dimensions.
+  - **Configure Benchmark Frames**: Preset or custom iterations per act.
+  - **Toggle Stress Mode**: Instant hotkey switch (`[U]`) between 60 FPS capped and uncapped.
+  - **Switch GPU Adapter**: Switch WebGPU adapter between discrete GPUs, integrated GPUs, and CPU rasterizers.
+  - **Live Hardware Telemetry & Diagnostics**: 150ms real-time monitoring of GPU temp, board power draw, core clock, VRAM, and CPU load.
+- **Menu Controls**:
+  - `[↑ / ↓]` or `[k / j]` : Navigate menu options
+  - `[ENTER]` or `[SPACE]` : Select option / open submenu
+  - `[1 - 9, 0]` : Direct numeric hotkeys
+  - `[U]` : Toggle uncapped GPU stress mode
+  - `[Q]` or `[ESC]` : Exit menu
+
+### 2. Direct Interactive Demo Mode
 ```bash
 ./target/release/dyno_term --demo
 ```
-- **Controls**:
+- **In-Demo Controls**:
   - `[SPACE]` : Switch between the 6 scenes
   - `[U]` : Toggle between 60 FPS V-Sync and 100% Uncapped GPU Stress Mode
   - `[Q]` or `[ESC]` : Exit
 
-### 2. Standard 4K Benchmark
-Runs deterministic 4K frames per scene across all six acts:
+### 3. Direct Benchmark Suite
+Runs deterministic frames across all six acts and generates a scorecard:
 ```bash
 ./target/release/dyno_term --benchmark
 ```
 
-### 3. Resolution Presets
+### 4. Resolution Presets (Direct CLI)
 ```bash
 # 4K UHD (Default: 3840x2160)
-./target/release/dyno_term --demo --res 4k
+./target/release/dyno_term --res 4k
 
 # Extreme 16K UHD Stress (15360x8640)
-./target/release/dyno_term --demo --res 16k
+./target/release/dyno_term --res 16k
 
 # 8K UHD (7680x4320)
-./target/release/dyno_term --demo --res 8k
+./target/release/dyno_term --res 8k
 
 # 1440p QHD (2560x1440)
-./target/release/dyno_term --demo --res 1440p
+./target/release/dyno_term --res 1440p
 
 # 1080p FHD (1920x1080)
-./target/release/dyno_term --demo --res 1080p
+./target/release/dyno_term --res 1080p
 
 # 720p APU / Mobile (1280x720)
-./target/release/dyno_term --demo --res 720p
+./target/release/dyno_term --res 720p
 ```

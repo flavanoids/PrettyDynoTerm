@@ -13,7 +13,7 @@ use gpu::{ComputePipelineManager, GpuContext};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use telemetry::TelemetryCollector;
-use terminal::{Hud, TerminalRenderer};
+use terminal::{format_resolution_tag, CliMenu, Hud, MenuAction, MenuConfig, TerminalRenderer};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -22,11 +22,15 @@ use terminal::{Hud, TerminalRenderer};
     version = "1.0.0"
 )]
 struct Args {
-    /// Run the deterministic benchmark suite
+    /// Open the interactive CLI launcher menu (default when no mode flag is passed)
+    #[arg(short, long)]
+    menu: bool,
+
+    /// Run the deterministic benchmark suite directly
     #[arg(short, long)]
     benchmark: bool,
 
-    /// Run in interactive demo preview mode
+    /// Run in interactive demo preview mode directly
     #[arg(short, long)]
     demo: bool,
 
@@ -82,12 +86,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Initialize GPU Context
-    let gpu_ctx = pollster::block_on(GpuContext::new(args.gpu))
+    let mut gpu_ctx = pollster::block_on(GpuContext::new(args.gpu))
         .map_err(|e| format!("GPU initialization failed: {}", e))?;
 
-    let device = Arc::clone(&gpu_ctx.device);
-    let queue = Arc::clone(&gpu_ctx.queue);
-    let adapter_info = gpu_ctx.adapter_info.clone();
+    let mut device = Arc::clone(&gpu_ctx.device);
+    let mut queue = Arc::clone(&gpu_ctx.queue);
+    let mut adapter_info = gpu_ctx.adapter_info.clone();
 
     // Terminal preview dimensions
     let (term_cols, term_rows) = crossterm::terminal::size().unwrap_or((120, 40));
@@ -100,7 +104,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .max(8);
     let term_pixel_height = char_height * 2;
 
-    let is_benchmark = args.benchmark || !args.demo;
+    let run_demo = args.demo;
+    let run_benchmark_mode = args.benchmark;
+    let run_menu = args.menu || (!run_demo && !run_benchmark_mode);
 
     // Canonical internal compute resolution: Defaults to 4K UHD (3840x2160) for balanced high-performance GPU compute
     let (compute_w, compute_h) = match args.res.to_lowercase().as_str() {
@@ -114,20 +120,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => (3840, 2160),
     };
 
-    let res_tag = if compute_w >= 15360 {
-        format!("16K UHD ({}x{})", compute_w, compute_h)
-    } else if compute_w >= 7680 {
-        format!("8K UHD ({}x{})", compute_w, compute_h)
-    } else if compute_w >= 3840 {
-        format!("4K UHD ({}x{})", compute_w, compute_h)
-    } else {
-        format!("{}x{}", compute_w, compute_h)
-    };
+    let res_tag = format_resolution_tag(compute_w, compute_h);
 
     // Initialize Compute Pipeline with chosen compute resolution
     let mut pipeline = ComputePipelineManager::new(
-        device,
-        queue,
+        Arc::clone(&device),
+        Arc::clone(&queue),
         shaders::UNIFIED_SHADER,
         compute_w,
         compute_h,
@@ -137,7 +135,104 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let telemetry = TelemetryCollector::new(adapter_info.name.clone());
     let mut renderer = TerminalRenderer::new();
 
-    if is_benchmark {
+    if run_menu {
+        let all_adapters = GpuContext::list_adapters();
+        let mut config = MenuConfig {
+            resolution_name: res_tag.clone(),
+            compute_width: compute_w,
+            compute_height: compute_h,
+            frames_per_scene: args.frames,
+            selected_scene: args.scene,
+            uncapped: args.uncapped,
+            selected_gpu_index: args.gpu.unwrap_or(0),
+            output_path: args.output.clone(),
+        };
+
+        let mut menu = CliMenu::new();
+        loop {
+            let (cols, rows) = crossterm::terminal::size().unwrap_or((120, 40));
+            let cur_term_w = args.width.unwrap_or(cols as u32).max(40) as usize;
+            let cur_term_h = args.height.map(|h| h / 2).unwrap_or(rows.saturating_sub(7) as u32).max(8) as usize * 2;
+
+            match menu.run(&mut config, &telemetry, &adapter_info, &all_adapters)? {
+                MenuAction::LaunchDemo => {
+                    let cur_res_tag = format_resolution_tag(config.compute_width, config.compute_height);
+                    run_interactive_demo(
+                        &mut pipeline,
+                        &mut renderer,
+                        &telemetry,
+                        &adapter_info,
+                        cur_term_w,
+                        cur_term_h,
+                        &cur_res_tag,
+                        config.selected_scene,
+                        config.uncapped,
+                    )?;
+                }
+                MenuAction::LaunchUncapped => {
+                    let cur_res_tag = format_resolution_tag(config.compute_width, config.compute_height);
+                    run_interactive_demo(
+                        &mut pipeline,
+                        &mut renderer,
+                        &telemetry,
+                        &adapter_info,
+                        cur_term_w,
+                        cur_term_h,
+                        &cur_res_tag,
+                        config.selected_scene,
+                        true,
+                    )?;
+                }
+                MenuAction::RunBenchmark => {
+                    let cur_res_tag = format_resolution_tag(config.compute_width, config.compute_height);
+                    run_benchmark(
+                        &mut pipeline,
+                        &mut renderer,
+                        &telemetry,
+                        &adapter_info,
+                        config.frames_per_scene,
+                        cur_term_w,
+                        cur_term_h,
+                        &cur_res_tag,
+                        &config.output_path,
+                    )?;
+                    println!("\r\n\x1b[38;2;0;255;200;1m▶ Benchmark finished. Press [Enter] or [Space] to return to Main Menu...\x1b[0m");
+                    use std::io::Write;
+                    let _ = std::io::stdout().flush();
+                    wait_for_menu_return()?;
+                }
+                MenuAction::RecreatePipeline => {
+                    config.resolution_name = format_resolution_tag(config.compute_width, config.compute_height);
+                    pipeline = ComputePipelineManager::new(
+                        Arc::clone(&device),
+                        Arc::clone(&queue),
+                        shaders::UNIFIED_SHADER,
+                        config.compute_width,
+                        config.compute_height,
+                    )?;
+                }
+                MenuAction::SwitchGpu(idx) => {
+                    config.selected_gpu_index = idx;
+                    gpu_ctx = pollster::block_on(GpuContext::new(Some(idx)))
+                        .map_err(|e| format!("Failed to switch GPU adapter: {}", e))?;
+                    device = Arc::clone(&gpu_ctx.device);
+                    queue = Arc::clone(&gpu_ctx.queue);
+                    adapter_info = gpu_ctx.adapter_info.clone();
+                    config.resolution_name = format_resolution_tag(config.compute_width, config.compute_height);
+                    pipeline = ComputePipelineManager::new(
+                        Arc::clone(&device),
+                        Arc::clone(&queue),
+                        shaders::UNIFIED_SHADER,
+                        config.compute_width,
+                        config.compute_height,
+                    )?;
+                }
+                MenuAction::Exit => {
+                    break;
+                }
+            }
+        }
+    } else if run_benchmark_mode {
         run_benchmark(
             &mut pipeline,
             &mut renderer,
@@ -163,6 +258,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
     }
 
+    Ok(())
+}
+
+fn wait_for_menu_return() -> Result<(), Box<dyn std::error::Error>> {
+    crossterm::terminal::enable_raw_mode()?;
+    loop {
+        if event::poll(Duration::from_millis(50))? {
+            if let Event::Key(key) = event::read()? {
+                match key.code {
+                    KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Esc | KeyCode::Char('q') => break,
+                    _ => {}
+                }
+            }
+        }
+    }
+    crossterm::terminal::disable_raw_mode()?;
     Ok(())
 }
 
