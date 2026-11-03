@@ -8,13 +8,13 @@ mod terminal;
 use benchmark::{BenchmarkReport, BenchmarkScorer, SystemReport};
 use clap::Parser;
 use cpu::NBodySimulation;
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use gpu::{ComputePipelineManager, GpuContext};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use telemetry::TelemetryCollector;
 use terminal::{
-    format_resolution_tag, get_scene_math_model, CliMenu, Hud, HudMode, MenuAction, MenuConfig,
+    format_resolution_tag, get_scene_math_model, visible_len, CliMenu, Hud, HudMode, MenuAction, MenuConfig,
     TerminalRenderer,
 };
 
@@ -278,6 +278,9 @@ fn wait_for_menu_return() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         if event::poll(Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
                 match key.code {
                     KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Esc | KeyCode::Char('q') => break,
                     _ => {}
@@ -334,8 +337,11 @@ fn run_interactive_demo(
         // Handle user input
         if event::poll(Duration::from_millis(0))? {
             if let Event::Key(key) = event::read()? {
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
                 match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => break,
+                    KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => break,
                     KeyCode::Char(' ') => {
                         scene_id = (scene_id + 1) % 6;
                         hud.scene_title = scene_names[scene_id as usize].to_string();
@@ -556,6 +562,7 @@ fn run_benchmark(
                 scorer.record_frame(
                     frame_dur,
                     stats.gpu_temp_c,
+                    stats.gpu_hotspot_c,
                     stats.gpu_power_w,
                     stats.vram_used_mb,
                     stats.gpu_clock_mhz,
@@ -590,6 +597,7 @@ fn run_benchmark(
                 scorer.record_frame(
                     frame_dur,
                     stats.gpu_temp_c,
+                    stats.gpu_hotspot_c,
                     stats.gpu_power_w,
                     stats.vram_used_mb,
                     stats.gpu_clock_mhz,
@@ -656,6 +664,7 @@ fn run_benchmark(
         total_frames: frames_per_scene * 6,
         overall_score: total_score,
         peak_gpu_temp_c: scorer.peak_temp,
+        peak_gpu_hotspot_c: scorer.peak_hotspot,
         peak_gpu_power_w: scorer.peak_power,
         peak_gpu_clock_mhz: scorer.peak_clock.max(stats.peak_gpu_clock_mhz),
         peak_vram_mb: scorer.peak_vram,
@@ -698,9 +707,32 @@ fn print_scorecard(report: &BenchmarkReport, output_path: &str, resolution: &str
     }
 
     println!("\x1b[38;2;0;220;255m├──────────────────────────────────────────────────────────────────────────┤\x1b[0m");
+    let peak_str = if report.peak_gpu_hotspot_c > 0.0 {
+        format!(
+            "Peak: \x1b[38;2;0;255;200;1m{:.0}°C\x1b[38;2;140;150;170m (Hotspot: \x1b[38;2;255;180;0;1m{:.0}°C\x1b[38;2;140;150;170m) │ \x1b[38;2;0;255;200;1m{:.0}W\x1b[38;2;140;150;170m │ \x1b[38;2;255;180;0;1m{}MHz\x1b[38;2;140;150;170m │ \x1b[38;2;0;255;200;1m{}MB VRAM\x1b[38;2;140;150;170m │ \x1b[38;2;255;255;255;1m{:.2}s\x1b[38;2;140;150;170m",
+            report.peak_gpu_temp_c,
+            report.peak_gpu_hotspot_c,
+            report.peak_gpu_power_w,
+            report.peak_gpu_clock_mhz,
+            report.peak_vram_mb,
+            report.total_elapsed_seconds
+        )
+    } else {
+        format!(
+            "Peak: \x1b[38;2;0;255;200;1m{:.0}°C\x1b[38;2;140;150;170m │ \x1b[38;2;0;255;200;1m{:.0}W\x1b[38;2;140;150;170m │ \x1b[38;2;255;180;0;1m{}MHz\x1b[38;2;140;150;170m │ \x1b[38;2;0;255;200;1m{}MB VRAM\x1b[38;2;140;150;170m │ \x1b[38;2;255;255;255;1m{:.2}s\x1b[38;2;140;150;170m",
+            report.peak_gpu_temp_c,
+            report.peak_gpu_power_w,
+            report.peak_gpu_clock_mhz,
+            report.peak_vram_mb,
+            report.total_elapsed_seconds
+        )
+    };
+    let vis_len = visible_len(&peak_str);
+    let pad_len = 72usize.saturating_sub(vis_len);
     println!(
-        "\x1b[38;2;140;150;170m│ Peak: \x1b[38;2;0;255;200;1m{:.0}°C\x1b[38;2;140;150;170m | \x1b[38;2;0;255;200;1m{:.0}W\x1b[38;2;140;150;170m | \x1b[38;2;255;180;0;1m{}MHz\x1b[38;2;140;150;170m | \x1b[38;2;0;255;200;1m{}MB VRAM\x1b[38;2;140;150;170m | Frames: \x1b[38;2;255;255;255;1m{:<3}\x1b[38;2;140;150;170m | Time: \x1b[38;2;255;255;255;1m{:.2}s\x1b[38;2;0;220;255m│",
-        report.peak_gpu_temp_c, report.peak_gpu_power_w, report.peak_gpu_clock_mhz, report.peak_vram_mb, report.total_frames, report.total_elapsed_seconds
+        "\x1b[38;2;140;150;170m│ {}{}\x1b[38;2;0;220;255m│",
+        peak_str,
+        " ".repeat(pad_len)
     );
     println!("\x1b[38;2;0;220;255m├──────────────────────────────────────────────────────────────────────────┤\x1b[0m");
     println!(

@@ -317,7 +317,12 @@ impl Hud {
         };
         let pwr_col = if stats.gpu_power_w >= 140.0 { highlight } else { val_color };
 
-        let c1_l2 = if c1_w >= 28 {
+        let c1_l2 = if c1_w >= 36 && stats.gpu_hotspot_c > 0.0 {
+            format!(
+                "{val_color}{:>4}MHz {border_color}│ {temp_col}{:>2.0}°C {label_color}(H:{:.0}°C) {border_color}│ {pwr_col}{:>3.0}W",
+                stats.gpu_clock_mhz, stats.gpu_temp_c, stats.gpu_hotspot_c, stats.gpu_power_w
+            )
+        } else if c1_w >= 28 {
             format!(
                 "{val_color}{:>4}MHz {border_color}│ {temp_col}{:>2.0}°C {border_color}│ {pwr_col}{:>3.0}W",
                 stats.gpu_clock_mhz, stats.gpu_temp_c, stats.gpu_power_w
@@ -543,7 +548,9 @@ mod tests {
     fn test_hud_exact_widths() {
         let stats = HardwareStats {
             gpu_name: "AMD Radeon RX 6650 XT (RADV NAVI23)".to_string(),
-            gpu_temp_c: 82.0,
+            gpu_temp_c: 62.0,
+            gpu_hotspot_c: 94.0,
+            gpu_mem_temp_c: 78.0,
             gpu_power_w: 148.0,
             gpu_clock_mhz: 2650,
             peak_gpu_clock_mhz: 2668,

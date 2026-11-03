@@ -1,6 +1,6 @@
 use crate::gpu::GpuAdapterInfo;
 use crate::telemetry::TelemetryCollector;
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
 
@@ -108,6 +108,10 @@ impl CliMenu {
 
             if event::poll(Duration::from_millis(50))? {
                 if let Event::Key(key) = event::read()? {
+                    if key.kind != KeyEventKind::Press {
+                        continue;
+                    }
+
                     // Global quit on Ctrl+C
                     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
                         break MenuAction::Exit;
@@ -138,9 +142,18 @@ impl CliMenu {
                             }
                         }
                         MenuView::TelemetryInfo => {
-                            // Any key returns to Main Menu
-                            self.view = MenuView::Main;
-                            self.selected_idx = 8;
+                            match key.code {
+                                KeyCode::Enter
+                                | KeyCode::Esc
+                                | KeyCode::Backspace
+                                | KeyCode::Char('q')
+                                | KeyCode::Char('Q')
+                                | KeyCode::Char(' ') => {
+                                    self.view = MenuView::Main;
+                                    self.selected_idx = 8;
+                                }
+                                _ => {}
+                            }
                         }
                     }
                     self.render_current_view(config, telemetry, adapter_info, all_adapters, term_cols, term_rows)?;
@@ -1010,19 +1023,25 @@ impl CliMenu {
         self.buf.push_str(pad);
         self.buf.push_str("\x1b[38;2;0;220;255m├──────────────────────────────────────────────────────────────────────────┤\x1b[0m\r\n");
 
-        let items = [
+        let mut items = vec![
             format!("\x1b[38;2;140;150;170mGPU Device         : \x1b[38;2;255;255;255;1m{}\x1b[0m", adapter_info.name),
             format!("\x1b[38;2;140;150;170mDriver & Backend   : \x1b[38;2;0;255;200m{} ({:?})\x1b[0m", adapter_info.driver, adapter_info.backend),
             format!("\x1b[38;2;140;150;170mAdapter Type       : \x1b[38;2;255;180;0m{:?}\x1b[0m", adapter_info.device_type),
-            format!("\x1b[38;2;140;150;170mGPU Temperature    : \x1b[38;2;0;255;200;1m{:.1} °C\x1b[0m", stats.gpu_temp_c),
-            format!("\x1b[38;2;140;150;170mGPU Power Draw     : \x1b[38;2;255;180;0;1m{:.1} W\x1b[38;2;140;150;170m (Board PPT)\x1b[0m", stats.gpu_power_w),
-            format!("\x1b[38;2;140;150;170mGPU Core Clock     : \x1b[38;2;0;220;255;1m{} MHz\x1b[38;2;140;150;170m (Peak: {} MHz)\x1b[0m", stats.gpu_clock_mhz, stats.peak_gpu_clock_mhz),
-            format!("\x1b[38;2;140;150;170mVRAM Allocation    : \x1b[38;2;0;255;200m{} MB / {} MB\x1b[0m", stats.vram_used_mb, stats.vram_total_mb),
-            format!("\x1b[38;2;140;150;170mCPU Processor      : \x1b[38;2;255;255;255;1m{}\x1b[0m", stats.cpu_name),
-            format!("\x1b[38;2;140;150;170mCPU Parallelism    : \x1b[38;2;0;255;200m{} Hardware Threads\x1b[0m", stats.cpu_threads),
-            format!("\x1b[38;2;140;150;170mCPU Utilization    : \x1b[38;2;255;180;0m{:.1} %\x1b[0m", stats.cpu_usage_pct),
-            format!("\x1b[38;2;140;150;170mActive Resolution  : \x1b[38;2;255;255;255;1m{}\x1b[0m", config.resolution_name),
+            format!("\x1b[38;2;140;150;170mGPU Temp (Edge)    : \x1b[38;2;0;255;200;1m{:.1} °C\x1b[38;2;140;150;170m (Standard Package Temp)\x1b[0m", stats.gpu_temp_c),
         ];
+        if stats.gpu_hotspot_c > 0.0 {
+            items.push(format!("\x1b[38;2;140;150;170mGPU Hotspot (Jct)  : \x1b[38;2;255;180;0;1m{:.1} °C\x1b[38;2;140;150;170m (Internal Junction Peak)\x1b[0m", stats.gpu_hotspot_c));
+        }
+        if stats.gpu_mem_temp_c > 0.0 {
+            items.push(format!("\x1b[38;2;140;150;170mGPU Memory Temp    : \x1b[38;2;0;255;200;1m{:.1} °C\x1b[38;2;140;150;170m (VRAM IC Sensors)\x1b[0m", stats.gpu_mem_temp_c));
+        }
+        items.push(format!("\x1b[38;2;140;150;170mGPU Power Draw     : \x1b[38;2;255;180;0;1m{:.1} W\x1b[38;2;140;150;170m (Board PPT)\x1b[0m", stats.gpu_power_w));
+        items.push(format!("\x1b[38;2;140;150;170mGPU Core Clock     : \x1b[38;2;0;220;255;1m{} MHz\x1b[38;2;140;150;170m (Peak: {} MHz)\x1b[0m", stats.gpu_clock_mhz, stats.peak_gpu_clock_mhz));
+        items.push(format!("\x1b[38;2;140;150;170mVRAM Allocation    : \x1b[38;2;0;255;200m{} MB / {} MB\x1b[0m", stats.vram_used_mb, stats.vram_total_mb));
+        items.push(format!("\x1b[38;2;140;150;170mCPU Processor      : \x1b[38;2;255;255;255;1m{}\x1b[0m", stats.cpu_name));
+        items.push(format!("\x1b[38;2;140;150;170mCPU Parallelism    : \x1b[38;2;0;255;200m{} Hardware Threads\x1b[0m", stats.cpu_threads));
+        items.push(format!("\x1b[38;2;140;150;170mCPU Utilization    : \x1b[38;2;255;180;0m{:.1} %\x1b[0m", stats.cpu_usage_pct));
+        items.push(format!("\x1b[38;2;140;150;170mActive Resolution  : \x1b[38;2;255;255;255;1m{}\x1b[0m", config.resolution_name));
 
         for item in items {
             self.buf.push_str(pad);

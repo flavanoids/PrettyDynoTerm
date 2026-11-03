@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 pub struct HardwareStats {
     pub gpu_name: String,
     pub gpu_clock_mhz: u32,
-    pub gpu_temp_c: f32,
+    pub gpu_temp_c: f32,       // Edge / Package temp (standard GPU temp matching btop)
+    pub gpu_hotspot_c: f32,    // Junction / Hotspot temp (silicon localized peak)
+    pub gpu_mem_temp_c: f32,   // VRAM / Memory temp (if available)
     pub gpu_power_w: f32,
     pub vram_used_mb: u64,
     pub vram_total_mb: u64,
@@ -40,6 +42,8 @@ impl TelemetryCollector {
             gpu_name: default_gpu_name,
             gpu_clock_mhz: 0,
             gpu_temp_c: 0.0,
+            gpu_hotspot_c: 0.0,
+            gpu_mem_temp_c: 0.0,
             gpu_power_w: 0.0,
             vram_used_mb: 0,
             vram_total_mb: 0,
@@ -79,7 +83,8 @@ impl TelemetryCollector {
                 }
 
                 // 2. GPU hwmon
-                let (mut clock_mhz, temp_c, power_w) = Self::read_gpu_hwmon(&hwmon_clone);
+                let (mut clock_mhz, edge_temp, hotspot_temp, mem_temp, power_w) =
+                    Self::read_gpu_hwmon(&hwmon_clone);
 
                 // If clock is 0 or low, check pp_dpm_sclk for active DPM clock
                 if clock_mhz == 0 {
@@ -108,7 +113,9 @@ impl TelemetryCollector {
                 // 4. Update shared stats
                 if let Ok(mut w) = stats_clone.write() {
                     w.gpu_clock_mhz = clock_mhz;
-                    w.gpu_temp_c = temp_c;
+                    w.gpu_temp_c = edge_temp;
+                    w.gpu_hotspot_c = hotspot_temp;
+                    w.gpu_mem_temp_c = mem_temp;
                     w.gpu_power_w = power_w;
                     w.vram_used_mb = vram_used_mb;
                     w.vram_total_mb = vram_total_mb;
@@ -142,9 +149,11 @@ impl TelemetryCollector {
         }
     }
 
-    fn read_gpu_hwmon(hwmon_path: &Option<String>) -> (u32, f32, f32) {
+    fn read_gpu_hwmon(hwmon_path: &Option<String>) -> (u32, f32, f32, f32, f32) {
         let mut clock_mhz = 0;
-        let mut temp_c = 0.0;
+        let mut edge_temp_c = 0.0;
+        let mut hotspot_temp_c = 0.0;
+        let mut mem_temp_c = 0.0;
         let mut power_w = 0.0;
 
         if let Some(path) = hwmon_path {
@@ -159,15 +168,56 @@ impl TelemetryCollector {
                 }
             }
 
-            // Read GPU temperature: check junction temp (temp2_input) first, then edge temp (temp1_input)
-            if let Ok(temp_str) = fs::read_to_string(format!("{}/temp2_input", path)) {
-                if let Ok(temp_mc) = temp_str.trim().parse::<f32>() {
-                    temp_c = temp_mc / 1000.0;
+            // Read GPU temperature sensors and map by sensor label.
+            // On modern GPUs (AMD amdgpu, Intel, etc.):
+            // - "edge" / "gpu" / "package" is the primary GPU die temp displayed by btop/mangohud.
+            // - "junction" / "hotspot" is the localized hottest silicon temp (can be 20-35°C higher).
+            // - "mem" / "vram" is the video memory junction temp.
+            for i in 1..=8 {
+                let input_path = format!("{}/temp{}_input", path, i);
+                if let Ok(temp_str) = fs::read_to_string(&input_path) {
+                    if let Ok(temp_mc) = temp_str.trim().parse::<f32>() {
+                        let temp_val = temp_mc / 1000.0;
+                        let label_path = format!("{}/temp{}_label", path, i);
+                        let label = fs::read_to_string(&label_path)
+                            .unwrap_or_default()
+                            .trim()
+                            .to_lowercase();
+
+                        if label.contains("edge")
+                            || label.contains("gpu")
+                            || label.contains("package")
+                            || label.contains("composite")
+                            || label.contains("die")
+                        {
+                            edge_temp_c = temp_val;
+                        } else if label.contains("junction") || label.contains("hotspot") || label.contains("tctl") {
+                            hotspot_temp_c = temp_val;
+                        } else if label.contains("mem") || label.contains("vram") {
+                            mem_temp_c = temp_val;
+                        } else if i == 1 && edge_temp_c == 0.0 {
+                            edge_temp_c = temp_val;
+                        } else if i == 2 && hotspot_temp_c == 0.0 {
+                            hotspot_temp_c = temp_val;
+                        } else if i == 3 && mem_temp_c == 0.0 {
+                            mem_temp_c = temp_val;
+                        }
+                    }
                 }
-            } else if let Ok(temp_str) = fs::read_to_string(format!("{}/temp1_input", path)) {
-                if let Ok(temp_mc) = temp_str.trim().parse::<f32>() {
-                    temp_c = temp_mc / 1000.0;
+            }
+
+            // Fallback: if no edge temp identified but temp1_input exists
+            if edge_temp_c == 0.0 {
+                if let Ok(temp_str) = fs::read_to_string(format!("{}/temp1_input", path)) {
+                    if let Ok(temp_mc) = temp_str.trim().parse::<f32>() {
+                        edge_temp_c = temp_mc / 1000.0;
+                    }
                 }
+            }
+
+            // If edge temp still not found, fallback to hotspot
+            if edge_temp_c == 0.0 && hotspot_temp_c > 0.0 {
+                edge_temp_c = hotspot_temp_c;
             }
 
             // Read GPU power (power1_average in microwatts)
@@ -182,7 +232,7 @@ impl TelemetryCollector {
             }
         }
 
-        (clock_mhz, temp_c, power_w)
+        (clock_mhz, edge_temp_c, hotspot_temp_c, mem_temp_c, power_w)
     }
 
     fn read_pp_dpm_sclk(drm_path: &str) -> (u32, u32) {
