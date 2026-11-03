@@ -9,9 +9,10 @@ use std::time::{Duration, Instant};
 pub struct HardwareStats {
     pub gpu_name: String,
     pub gpu_clock_mhz: u32,
-    pub gpu_temp_c: f32,       // Edge / Package temp (standard GPU temp matching btop)
-    pub gpu_hotspot_c: f32,    // Junction / Hotspot temp (silicon localized peak)
-    pub gpu_mem_temp_c: f32,   // VRAM / Memory temp (if available)
+    pub gpu_util_pct: f32,      // GPU core load percentage (0 - 100%)
+    pub gpu_temp_c: f32,        // Edge / Package temp (standard GPU temp matching btop)
+    pub gpu_hotspot_c: f32,     // Junction / Hotspot temp (silicon localized peak)
+    pub gpu_mem_temp_c: f32,    // VRAM / Memory temp (if available)
     pub gpu_power_w: f32,
     pub vram_used_mb: u64,
     pub vram_total_mb: u64,
@@ -19,6 +20,7 @@ pub struct HardwareStats {
     pub cpu_usage_pct: f32,
     pub cpu_threads: usize,
     pub peak_gpu_clock_mhz: u32,
+    pub peak_gpu_util_pct: f32,
 }
 
 pub struct TelemetryCollector {
@@ -41,6 +43,7 @@ impl TelemetryCollector {
         let initial_stats = HardwareStats {
             gpu_name: default_gpu_name,
             gpu_clock_mhz: 0,
+            gpu_util_pct: 0.0,
             gpu_temp_c: 0.0,
             gpu_hotspot_c: 0.0,
             gpu_mem_temp_c: 0.0,
@@ -51,6 +54,7 @@ impl TelemetryCollector {
             cpu_usage_pct: 0.0,
             cpu_threads,
             peak_gpu_clock_mhz: 0,
+            peak_gpu_util_pct: 0.0,
         };
 
         let stats = Arc::new(RwLock::new(initial_stats));
@@ -67,6 +71,7 @@ impl TelemetryCollector {
             let mut last_active_clock = 0u32;
             let mut last_active_time = Instant::now();
             let mut peak_clock = 0u32;
+            let mut peak_util = 0.0f32;
 
             while !stop_clone.load(Ordering::Relaxed) {
                 // 1. CPU Usage
@@ -107,12 +112,17 @@ impl TelemetryCollector {
                     clock_mhz = last_active_clock;
                 }
 
-                // 3. VRAM
+                // 3. GPU Utilization (Core Load %)
+                let gpu_util = Self::read_gpu_utilization(&vram_clone);
+                peak_util = peak_util.max(gpu_util);
+
+                // 4. VRAM
                 let (vram_used_mb, vram_total_mb) = Self::read_vram(&vram_clone);
 
-                // 4. Update shared stats
+                // 5. Update shared stats
                 if let Ok(mut w) = stats_clone.write() {
                     w.gpu_clock_mhz = clock_mhz;
+                    w.gpu_util_pct = gpu_util;
                     w.gpu_temp_c = edge_temp;
                     w.gpu_hotspot_c = hotspot_temp;
                     w.gpu_mem_temp_c = mem_temp;
@@ -121,6 +131,7 @@ impl TelemetryCollector {
                     w.vram_total_mb = vram_total_mb;
                     w.cpu_usage_pct = cpu_usage_pct;
                     w.peak_gpu_clock_mhz = peak_clock;
+                    w.peak_gpu_util_pct = peak_util;
                 }
 
                 thread::sleep(Duration::from_millis(15));
@@ -291,10 +302,59 @@ impl TelemetryCollector {
         None
     }
 
+    fn read_gpu_utilization(drm_path: &Option<String>) -> f32 {
+        if let Some(path) = drm_path {
+            // 1. AMD gpu_busy_percent (standard sysfs metric, 0-100)
+            if let Ok(content) = fs::read_to_string(format!("{}/gpu_busy_percent", path)) {
+                if let Ok(pct) = content.trim().parse::<f32>() {
+                    return pct.clamp(0.0, 100.0);
+                }
+            }
+        }
+
+        // 2. Scan card0..card4 for gpu_busy_percent
+        for card_idx in 0..4 {
+            let candidate = format!("/sys/class/drm/card{}/device/gpu_busy_percent", card_idx);
+            if let Ok(content) = fs::read_to_string(&candidate) {
+                if let Ok(pct) = content.trim().parse::<f32>() {
+                    return pct.clamp(0.0, 100.0);
+                }
+            }
+        }
+
+        // 3. Intel i915 / Xe frequency ratio fallback
+        for card_idx in 0..4 {
+            let act_path = format!("/sys/class/drm/card{}/gt_act_freq_mhz", card_idx);
+            let max_path = format!("/sys/class/drm/card{}/gt_max_freq_mhz", card_idx);
+            if let (Ok(act_str), Ok(max_str)) = (fs::read_to_string(&act_path), fs::read_to_string(&max_path)) {
+                if let (Ok(act), Ok(max)) = (act_str.trim().parse::<f32>(), max_str.trim().parse::<f32>()) {
+                    if max > 0.0 {
+                        let min_path = format!("/sys/class/drm/card{}/gt_min_freq_mhz", card_idx);
+                        let min = fs::read_to_string(&min_path).ok().and_then(|s| s.trim().parse::<f32>().ok()).unwrap_or(0.0);
+                        let span = max - min;
+                        if span > 0.0 {
+                            return (((act - min) / span) * 100.0).clamp(0.0, 100.0);
+                        }
+                    }
+                }
+            }
+        }
+
+        0.0
+    }
+
     fn find_drm_device_path() -> Option<String> {
         for card_idx in 0..4 {
             let path = format!("/sys/class/drm/card{}/device", card_idx);
-            if Path::new(&format!("{}/mem_info_vram_total", path)).exists() {
+            if Path::new(&format!("{}/gpu_busy_percent", path)).exists()
+                || Path::new(&format!("{}/mem_info_vram_total", path)).exists()
+            {
+                return Some(path);
+            }
+        }
+        for card_idx in 0..4 {
+            let path = format!("/sys/class/drm/card{}/device", card_idx);
+            if Path::new(&path).exists() {
                 return Some(path);
             }
         }

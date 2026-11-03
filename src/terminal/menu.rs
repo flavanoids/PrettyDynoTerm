@@ -1027,7 +1027,8 @@ impl CliMenu {
             format!("\x1b[38;2;140;150;170mGPU Device         : \x1b[38;2;255;255;255;1m{}\x1b[0m", adapter_info.name),
             format!("\x1b[38;2;140;150;170mDriver & Backend   : \x1b[38;2;0;255;200m{} ({:?})\x1b[0m", adapter_info.driver, adapter_info.backend),
             format!("\x1b[38;2;140;150;170mAdapter Type       : \x1b[38;2;255;180;0m{:?}\x1b[0m", adapter_info.device_type),
-            format!("\x1b[38;2;140;150;170mGPU Temp (Edge)    : \x1b[38;2;0;255;200;1m{:.1} °C\x1b[38;2;140;150;170m (Standard Package Temp)\x1b[0m", stats.gpu_temp_c),
+            format!("\x1b[38;2;140;150;170mGPU Utilization    : \x1b[38;2;0;255;200;1m{:.1} %\x1b[38;2;140;150;170m (Peak: {:.1} %)\x1b[0m", stats.gpu_util_pct, stats.peak_gpu_util_pct),
+            format!("\x1b[38;2;140;150;170mGPU Temperature    : \x1b[38;2;0;255;200;1m{:.1} °C\x1b[38;2;140;150;170m (Standard Package Temp)\x1b[0m", stats.gpu_temp_c),
         ];
         if stats.gpu_hotspot_c > 0.0 {
             items.push(format!("\x1b[38;2;140;150;170mGPU Hotspot (Jct)  : \x1b[38;2;255;180;0;1m{:.1} °C\x1b[38;2;140;150;170m (Internal Junction Peak)\x1b[0m", stats.gpu_hotspot_c));

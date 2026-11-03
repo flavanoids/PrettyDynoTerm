@@ -316,11 +316,18 @@ impl Hud {
             val_color // Cool Mint
         };
         let pwr_col = if stats.gpu_power_w >= 140.0 { highlight } else { val_color };
+        let util_col = if stats.gpu_util_pct >= 90.0 {
+            val_color // Neon mint - saturated
+        } else if stats.gpu_util_pct >= 50.0 {
+            highlight // Amber
+        } else {
+            label_color // Slate
+        };
 
-        let c1_l2 = if c1_w >= 36 && stats.gpu_hotspot_c > 0.0 {
+        let c1_l2 = if c1_w >= 36 {
             format!(
-                "{val_color}{:>4}MHz {border_color}│ {temp_col}{:>2.0}°C {label_color}(H:{:.0}°C) {border_color}│ {pwr_col}{:>3.0}W",
-                stats.gpu_clock_mhz, stats.gpu_temp_c, stats.gpu_hotspot_c, stats.gpu_power_w
+                "{val_color}{:>4}MHz {border_color}│ {temp_col}{:>2.0}°C {border_color}│ {util_col}{:>3.0}% Load {border_color}│ {pwr_col}{:>3.0}W",
+                stats.gpu_clock_mhz, stats.gpu_temp_c, stats.gpu_util_pct, stats.gpu_power_w
             )
         } else if c1_w >= 28 {
             format!(
@@ -341,18 +348,29 @@ impl Hud {
         } else {
             0
         };
-        let vram_bar_len = if c1_w >= 28 { 6 } else { 4 };
+        let gpu_bar_len = if c1_w >= 32 { 5 } else if c1_w >= 26 { 4 } else { 3 };
+        let gpu_bar = make_bar(stats.gpu_util_pct, gpu_bar_len);
+
+        let vram_bar_len = if c1_w >= 32 { 5 } else if c1_w >= 26 { 4 } else { 3 };
         let vram_bar = make_bar(vram_pct as f32, vram_bar_len);
 
-        let c1_l3 = if c1_w >= 28 {
+        let c1_l3 = if c1_w >= 36 {
             format!(
-                "{label_color}VRAM: {highlight}[{vram_bar}] {val_color}{:>4}/{:>4}M",
-                stats.vram_used_mb, stats.vram_total_mb
+                "{label_color}GPU: {util_col}[{gpu_bar}] {:>3.0}% {border_color}│ {label_color}VRAM: {highlight}[{vram_bar}] {:>2.0}%",
+                stats.gpu_util_pct, vram_pct
+            )
+        } else if c1_w >= 28 {
+            format!(
+                "{label_color}GPU: {util_col}[{gpu_bar}] {:>3.0}% {border_color}│ {label_color}VR: {val_color}{:>2.0}%",
+                stats.gpu_util_pct, vram_pct
             )
         } else if c1_w >= 20 {
-            format!("{label_color}VRAM: {highlight}[{vram_bar}] {val_color}{}%", vram_pct)
+            format!(
+                "{label_color}GPU: {util_col}{:>3.0}% {border_color}│ {label_color}VR: {val_color}{:>2.0}%",
+                stats.gpu_util_pct, vram_pct
+            )
         } else {
-            format!("{label_color}VRAM: {val_color}{}%", vram_pct)
+            format!("{label_color}GPU: {util_col}{:>3.0}%", stats.gpu_util_pct)
         };
 
         // ─────────────────────────────────────────────
@@ -553,7 +571,9 @@ mod tests {
             gpu_mem_temp_c: 78.0,
             gpu_power_w: 148.0,
             gpu_clock_mhz: 2650,
+            gpu_util_pct: 98.0,
             peak_gpu_clock_mhz: 2668,
+            peak_gpu_util_pct: 99.0,
             vram_used_mb: 5500,
             vram_total_mb: 8176,
             cpu_name: "12th Gen Intel Core i5-12600K".to_string(),

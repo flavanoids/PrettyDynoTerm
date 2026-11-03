@@ -24,6 +24,8 @@ pub struct BenchmarkReport {
     pub peak_gpu_temp_c: f32,
     #[serde(default)]
     pub peak_gpu_hotspot_c: f32,
+    #[serde(default)]
+    pub peak_gpu_util_pct: f32,
     pub peak_gpu_power_w: f32,
     #[serde(default)]
     pub peak_gpu_clock_mhz: u32,
@@ -44,6 +46,7 @@ pub struct BenchmarkScorer {
     frametimes: Vec<Duration>,
     pub peak_temp: f32,
     pub peak_hotspot: f32,
+    pub peak_util: f32,
     pub peak_power: f32,
     pub peak_clock: u32,
     pub peak_vram: u64,
@@ -55,6 +58,7 @@ impl BenchmarkScorer {
             frametimes: Vec::with_capacity(2048),
             peak_temp: 0.0,
             peak_hotspot: 0.0,
+            peak_util: 0.0,
             peak_power: 0.0,
             peak_clock: 0,
             peak_vram: 0,
@@ -66,6 +70,7 @@ impl BenchmarkScorer {
         dt: Duration,
         temp: f32,
         hotspot: f32,
+        util: f32,
         power: f32,
         vram: u64,
         clock: u32,
@@ -76,6 +81,9 @@ impl BenchmarkScorer {
         }
         if hotspot > self.peak_hotspot {
             self.peak_hotspot = hotspot;
+        }
+        if util > self.peak_util {
+            self.peak_util = util;
         }
         if power > self.peak_power {
             self.peak_power = power;
