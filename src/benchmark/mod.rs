@@ -1,4 +1,10 @@
+pub mod consistency;
 pub mod history;
+pub use consistency::{
+    compute_consistency_report, format_consistency_scorecard, load_consistency_report,
+    save_consistency_report, ConsistencyReport, SceneConsistencyStats, StatSummary,
+    DEFAULT_CONSISTENCY_FILE,
+};
 pub use history::{
     append_to_history, compare_reports, format_comparison_table, format_history_table,
     load_baseline, load_history, save_baseline, BenchmarkComparison, SceneComparison,

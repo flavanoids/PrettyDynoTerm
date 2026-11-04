@@ -23,6 +23,7 @@ pub struct Hud {
     pub act_progress_pct: f32,
     pub overall_progress_pct: f32,
     pub current_score: u64,
+    pub iteration_info: Option<(usize, usize)>,
 
     // Demo session telemetry
     pub demo_elapsed_secs: f32,
@@ -48,10 +49,11 @@ impl Hud {
             is_benchmark: false,
             is_uncapped: false,
             act_index: 1,
-            act_total: 6,
+            act_total: 7,
             act_progress_pct: 0.0,
             overall_progress_pct: 0.0,
             current_score: 0,
+            iteration_info: None,
             demo_elapsed_secs: 0.0,
             demo_frame_count: 0,
             frametime_ms: 0.0,
@@ -237,21 +239,27 @@ impl Hud {
         let sep_budget = w.saturating_sub(sep_overhead);
 
         let (mut telemetry_title, mut progress_title) = if self.is_benchmark {
-            if sep_budget >= 52 {
+            let iter_prefix = if let Some((cur, total)) = self.iteration_info {
+                format!("[RUN {}/{}] ", cur, total)
+            } else {
+                String::new()
+            };
+            if sep_budget >= 60 {
                 (
                     " TELEMETRY ".to_string(),
                     format!(
-                        " ACT {}/{}: {:>3.0}% │ OVERALL: {:>3.0}% ",
+                        " {}ACT {}/{}: {:>3.0}% │ OVERALL: {:>3.0}% ",
+                        iter_prefix,
                         self.act_index,
                         self.act_total,
                         self.act_progress_pct,
                         self.overall_progress_pct
                     ),
                 )
-            } else if sep_budget >= 30 {
+            } else if sep_budget >= 35 {
                 (
                     " TELEMETRY ".to_string(),
-                    format!(" ACT {}/{}: {:>3.0}% ", self.act_index, self.act_total, self.act_progress_pct),
+                    format!(" {}ACT {}/{}: {:>3.0}% ", iter_prefix, self.act_index, self.act_total, self.act_progress_pct),
                 )
             } else {
                 (

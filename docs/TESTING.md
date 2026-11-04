@@ -85,7 +85,7 @@ When `-t, --test` is provided, `dyno_term` runs in non-interactive stdout mode, 
 
 ## 3. Automated Developer Test Suite (`cargo test`)
 
-The automated test suite contains **35 tests** spanning unit, integration, and CLI domains:
+The automated test suite contains **40 tests** spanning unit, integration, and CLI domains:
 
 ```bash
 cargo test --all-targets -- --nocapture
@@ -96,11 +96,12 @@ cargo test --all-targets -- --nocapture
 | Target | Module | Test Count | Description |
 | :--- | :--- | :--- | :--- |
 | `src/lib.rs` | `benchmark::tests` | 7 | Empty result handling, peak tracking, frametime & 1% low percentiles, scene weighting formulas, JSON report round-trip, report file writing, history and baseline workflow. |
+| `src/lib.rs` | `benchmark::consistency::tests` | 4 | StatSummary calculations (mean, standard deviation, variance, range, CV%), empty stat protection, consistency rating thresholds, JSON round-trip save/load, and ANSI scorecard generation. |
 | `src/lib.rs` | `cpu::tests` | 4 | Initialization particle distribution, multithreaded step determinism, absence of NaNs/Infs, preview rasterization, buffer bounds safety. |
 | `src/lib.rs` | `shaders::tests` | 3 | Unified shader WGSL structure, downsampler WGSL structure, std140 uniform memory struct alignment and size checks. |
 | `src/lib.rs` | `telemetry::tests` | 5 | HardwareStats defaults, CPU thread detection, CPU brand string reading, `/proc/stat` format, TelemetryCollector worker lifecycle. |
 | `src/lib.rs` | `terminal::tests` | 7 | Half-block downsampling identity and downscaling, renderer initialization, HUD width boundaries, scene math models, resolution presets, ANSI string visible length. |
-| `tests/cli_tests.rs` | CLI Integration | 8 | CLI default argument parsing, `-t`/`--test`/`--self-test` flags, `--benchmark` flags, `--demo` flags, `--gpu` and `--list-gpus` flags, `--history`/`--set-baseline`/`--compare`, custom width/height, resolution preset parsing. |
+| `tests/cli_tests.rs` | CLI Integration | 9 | CLI default argument parsing, `-t`/`--test`/`--self-test` flags, `--benchmark` flags, `-c`/`--consistency`/`--stability`/`--cooldown` flags, `--demo` flags, `--gpu` and `--list-gpus` flags, `--history`/`--set-baseline`/`--compare`, custom width/height, resolution preset parsing. |
 | `tests/pipeline_integration.rs` | GPU Integration | 1 | Headless GPU device creation, compute pipeline initialization, compute pass dispatch, and staging buffer readback. |
 
 ---

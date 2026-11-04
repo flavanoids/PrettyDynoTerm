@@ -1,6 +1,9 @@
 use clap::Parser;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use dyno_term::benchmark::{BenchmarkReport, BenchmarkScorer, SystemReport};
+use dyno_term::benchmark::{
+    compute_consistency_report, format_consistency_scorecard, save_consistency_report,
+    BenchmarkReport, BenchmarkScorer, SystemReport, DEFAULT_CONSISTENCY_FILE,
+};
 use dyno_term::cli::{parse_resolution, Args};
 use dyno_term::cpu::NBodySimulation;
 use dyno_term::gpu::{self, ComputePipelineManager, GpuContext};
@@ -99,7 +102,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let run_demo = args.demo;
     let run_benchmark_mode = args.benchmark;
-    let run_menu = args.menu || (!run_demo && !run_benchmark_mode);
+    let run_consistency_mode = args.consistency.is_some();
+    let run_menu = args.menu || (!run_demo && !run_benchmark_mode && !run_consistency_mode);
 
     // Canonical internal compute resolution: Defaults to 4K UHD (3840x2160) for balanced high-performance GPU compute
     let (compute_w, compute_h) = parse_resolution(&args.res, term_width, term_pixel_height);
@@ -135,6 +139,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             uncapped: args.uncapped,
             selected_gpu_index: args.gpu.unwrap_or(0),
             output_path: args.output.clone(),
+            consistency_iterations: 5,
+            cooldown_seconds: args.cooldown,
         };
 
         let mut menu = CliMenu::new();
@@ -190,6 +196,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = std::io::stdout().flush();
                     wait_for_menu_return()?;
                 }
+                MenuAction::RunConsistency => {
+                    let cur_res_tag = format_resolution_tag(config.compute_width, config.compute_height);
+                    let out_file = if config.output_path == "dyno_benchmark_results.json" {
+                        DEFAULT_CONSISTENCY_FILE
+                    } else {
+                        &config.output_path
+                    };
+                    run_consistency_suite(
+                        &mut pipeline,
+                        &mut renderer,
+                        &telemetry,
+                        &adapter_info,
+                        config.consistency_iterations,
+                        config.cooldown_seconds,
+                        config.frames_per_scene,
+                        cur_term_w,
+                        cur_term_h,
+                        &cur_res_tag,
+                        out_file,
+                    )?;
+                    println!("\r\n\x1b[38;2;0;255;200;1m▶ Consistency suite finished. Press [Enter] or [Space] to return to Main Menu...\x1b[0m");
+                    use std::io::Write;
+                    let _ = std::io::stdout().flush();
+                    wait_for_menu_return()?;
+                }
                 MenuAction::RecreatePipeline => {
                     config.resolution_name = format_resolution_tag(config.compute_width, config.compute_height);
                     pipeline = ComputePipelineManager::new(
@@ -221,6 +252,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+    } else if let Some(iterations) = args.consistency {
+        let out_file = if args.output == "dyno_benchmark_results.json" {
+            DEFAULT_CONSISTENCY_FILE
+        } else {
+            &args.output
+        };
+        run_consistency_suite(
+            &mut pipeline,
+            &mut renderer,
+            &telemetry,
+            &adapter_info,
+            iterations,
+            args.cooldown,
+            args.frames,
+            term_width as usize,
+            term_pixel_height as usize,
+            &res_tag,
+            out_file,
+        )?;
     } else if run_benchmark_mode {
         run_benchmark(
             &mut pipeline,
@@ -437,7 +487,7 @@ fn run_interactive_demo(
     Ok(())
 }
 
-fn run_benchmark(
+fn execute_benchmark_pass(
     pipeline: &mut ComputePipelineManager,
     renderer: &mut TerminalRenderer,
     telemetry: &TelemetryCollector,
@@ -446,11 +496,8 @@ fn run_benchmark(
     term_width: usize,
     term_height: usize,
     res_tag: &str,
-    output_path: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    renderer.enter_alternate_screen()?;
-    crossterm::terminal::enable_raw_mode()?;
-
+    iteration_info: Option<(usize, usize)>,
+) -> Result<Option<BenchmarkReport>, Box<dyn std::error::Error>> {
     let scene_names = [
         "ATMOSPHERIC OCEAN WAVES (GPU)",
         "THE MANDELBULB CORE (GPU)",
@@ -479,6 +526,7 @@ fn run_benchmark(
         hud.is_benchmark = true;
         hud.act_index = (scene_id + 1) as usize;
         hud.act_total = 7;
+        hud.iteration_info = iteration_info;
         hud.current_score = cumulative_score;
 
         let scene_start = Instant::now();
@@ -490,10 +538,7 @@ fn run_benchmark(
                 if let Event::Key(key) = event::read()? {
                     match key.code {
                         KeyCode::Char('q') | KeyCode::Esc => {
-                            crossterm::terminal::disable_raw_mode()?;
-                            renderer.leave_alternate_screen()?;
-                            println!("Benchmark aborted by user.");
-                            return Ok(());
+                            return Ok(None);
                         }
                         KeyCode::Char('h') | KeyCode::Char('H') => {
                             hud.toggle_mode();
@@ -568,7 +613,7 @@ fn run_benchmark(
                     )?;
                 }
             } else {
-                // Act VI: Multi-Threaded CPU N-Body Scene (32,000 celestial bodies)
+                // Act VII: Multi-Threaded CPU N-Body Scene (32,000 celestial bodies)
                 nbody.step_multithreaded(0.005);
                 let frame_dur = frame_start.elapsed();
 
@@ -620,10 +665,6 @@ fn run_benchmark(
     let total_elapsed = total_benchmark_start.elapsed().as_secs_f64();
     let total_score: u64 = scene_results.iter().map(|s| s.score).sum();
 
-    crossterm::terminal::disable_raw_mode()?;
-    renderer.leave_alternate_screen()?;
-
-    // Generate Final Report
     let stats = telemetry.sample(&adapter_info.name);
     let report = BenchmarkReport {
         timestamp: {
@@ -652,6 +693,165 @@ fn run_benchmark(
         scene_results: scene_results.clone(),
     };
 
+    Ok(Some(report))
+}
+
+fn format_box_line(content: &str, inner_width: usize) -> String {
+    let vis = visible_len(content);
+    let pad = inner_width.saturating_sub(vis);
+    format!(
+        "\x1b[38;2;140;150;170m│ \x1b[38;2;255;255;255m{}{}\x1b[38;2;0;220;255m│\r\n",
+        content,
+        " ".repeat(pad)
+    )
+}
+
+fn run_cooldown_screen(
+    renderer: &mut TerminalRenderer,
+    telemetry: &TelemetryCollector,
+    adapter_info: &gpu::GpuAdapterInfo,
+    _term_width: usize,
+    _term_height: usize,
+    completed_run: usize,
+    total_runs: usize,
+    cooldown_seconds: u64,
+    last_report: &BenchmarkReport,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let start_time = Instant::now();
+    let cooldown_dur = Duration::from_secs(cooldown_seconds);
+
+    while start_time.elapsed() < cooldown_dur {
+        if event::poll(Duration::from_millis(100))? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind == KeyEventKind::Press {
+                    match key.code {
+                        KeyCode::Char(' ') | KeyCode::Enter => {
+                            return Ok(true);
+                        }
+                        KeyCode::Char('q') | KeyCode::Esc => {
+                            return Ok(false);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        let elapsed = start_time.elapsed();
+        let remaining_secs = cooldown_seconds.saturating_sub(elapsed.as_secs());
+        let progress_ratio = (elapsed.as_secs_f32() / cooldown_seconds.max(1) as f32).clamp(0.0, 1.0);
+
+        let stats = telemetry.sample(&adapter_info.name);
+
+        let bar_width: usize = 28;
+        let filled_chars = (progress_ratio * bar_width as f32).round() as usize;
+        let empty_chars = bar_width.saturating_sub(filled_chars);
+        let progress_bar = format!(
+            "\x1b[38;2;0;255;200;1m{}\x1b[38;2;60;80;100m{}\x1b[0m",
+            "█".repeat(filled_chars),
+            "░".repeat(empty_chars)
+        );
+
+        let temp_delta = stats.gpu_temp_c - last_report.peak_gpu_temp_c;
+        let delta_sign = if temp_delta >= 0.0 { "+" } else { "" };
+
+        let mut buf = String::with_capacity(2048);
+        buf.push_str("\r\n");
+        buf.push_str("\x1b[38;2;0;220;255;1m┌──────────────────────────────────────────────────────────────────────────┐\r\n");
+        buf.push_str("│                   THERMAL STABILIZATION COOLDOWN PAUSE                   │\r\n");
+        buf.push_str("├──────────────────────────────────────────────────────────────────────────┤\x1b[0m\r\n");
+
+        let line1 = format!(
+            "Completed Run     : \x1b[38;2;255;255;255;1m{} of {}\x1b[38;2;140;150;170m (\x1b[38;2;255;180;0;1m{:>9} pts\x1b[38;2;140;150;170m, \x1b[38;2;255;255;255m{:.2}s\x1b[38;2;140;150;170m)",
+            completed_run, total_runs, last_report.overall_score, last_report.total_elapsed_seconds
+        );
+        buf.push_str(&format_box_line(&line1, 72));
+
+        let line2 = format!(
+            "Next Iteration    : \x1b[38;2;0;255;200;1mRun {} of {}\x1b[38;2;140;150;170m",
+            completed_run + 1, total_runs
+        );
+        buf.push_str(&format_box_line(&line2, 72));
+
+        let line3 = format!(
+            "Cooldown Progress : [{}] \x1b[38;2;255;180;0;1m{:>2}s\x1b[38;2;140;150;170m / {}s remaining",
+            progress_bar, remaining_secs, cooldown_seconds
+        );
+        buf.push_str(&format_box_line(&line3, 72));
+
+        buf.push_str("\x1b[38;2;0;220;255m├──────────────────────────────────────────────────────────────────────────┤\x1b[0m\r\n");
+
+        let line_head = "\x1b[1mLIVE HARDWARE TELEMETRY & DISSIPATION:\x1b[0m";
+        buf.push_str(&format_box_line(line_head, 72));
+
+        let line4 = format!(
+            "GPU Core Temp     : \x1b[38;2;0;255;200;1m{:.1}°C\x1b[38;2;140;150;170m (Run Peak: {:.1}°C, Delta: {}{:.1}°C)",
+            stats.gpu_temp_c, last_report.peak_gpu_temp_c, delta_sign, temp_delta
+        );
+        buf.push_str(&format_box_line(&line4, 72));
+
+        let line5 = format!(
+            "GPU Hotspot Temp  : \x1b[38;2;0;255;200;1m{:.1}°C\x1b[38;2;140;150;170m (Run Peak: {:.1}°C)",
+            stats.gpu_hotspot_c, last_report.peak_gpu_hotspot_c
+        );
+        buf.push_str(&format_box_line(&line5, 72));
+
+        let line6 = format!(
+            "GPU Clock / Power : \x1b[38;2;255;255;255;1m{} MHz\x1b[38;2;140;150;170m │ \x1b[38;2;255;255;255;1m{:.1} W\x1b[38;2;140;150;170m",
+            stats.gpu_clock_mhz, stats.gpu_power_w
+        );
+        buf.push_str(&format_box_line(&line6, 72));
+
+        buf.push_str("\x1b[38;2;0;220;255m├──────────────────────────────────────────────────────────────────────────┤\x1b[0m\r\n");
+
+        let line_foot = "\x1b[1m[Space / Enter]\x1b[0m Skip Cooldown   │   \x1b[1m[Esc / Q]\x1b[0m Finish Early with Completed Runs";
+        buf.push_str(&format_box_line(line_foot, 72));
+
+        buf.push_str("\x1b[38;2;0;220;255;1m└──────────────────────────────────────────────────────────────────────────┘\x1b[0m\r\n");
+
+        renderer.render_raw_text(&buf)?;
+    }
+
+    Ok(true)
+}
+
+fn run_benchmark(
+    pipeline: &mut ComputePipelineManager,
+    renderer: &mut TerminalRenderer,
+    telemetry: &TelemetryCollector,
+    adapter_info: &gpu::GpuAdapterInfo,
+    frames_per_scene: u32,
+    term_width: usize,
+    term_height: usize,
+    res_tag: &str,
+    output_path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    renderer.enter_alternate_screen()?;
+    crossterm::terminal::enable_raw_mode()?;
+
+    let pass_res = execute_benchmark_pass(
+        pipeline,
+        renderer,
+        telemetry,
+        adapter_info,
+        frames_per_scene,
+        term_width,
+        term_height,
+        res_tag,
+        None,
+    );
+
+    crossterm::terminal::disable_raw_mode()?;
+    let _ = renderer.leave_alternate_screen();
+
+    let report = match pass_res? {
+        Some(r) => r,
+        None => {
+            println!("Benchmark aborted by user.");
+            return Ok(());
+        }
+    };
+
     let _ = BenchmarkScorer::save_report(&report, output_path);
     let _ = dyno_term::benchmark::append_to_history(&report, dyno_term::benchmark::DEFAULT_HISTORY_FILE);
     print_scorecard(&report, output_path, res_tag);
@@ -664,6 +864,94 @@ fn run_benchmark(
     } else {
         println!("\r\n\x1b[38;2;120;140;160m💡 Tip: Set this run as your reference baseline with:\x1b[0m \x1b[1mdyno_term --set-baseline\x1b[0m");
     }
+
+    Ok(())
+}
+
+fn run_consistency_suite(
+    pipeline: &mut ComputePipelineManager,
+    renderer: &mut TerminalRenderer,
+    telemetry: &TelemetryCollector,
+    adapter_info: &gpu::GpuAdapterInfo,
+    iterations: usize,
+    cooldown_seconds: u64,
+    frames_per_scene: u32,
+    term_width: usize,
+    term_height: usize,
+    res_tag: &str,
+    output_path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let iterations = iterations.max(1);
+    renderer.enter_alternate_screen()?;
+    crossterm::terminal::enable_raw_mode()?;
+
+    let mut completed_runs = Vec::with_capacity(iterations);
+
+    for i in 1..=iterations {
+        let pass_res = execute_benchmark_pass(
+            pipeline,
+            renderer,
+            telemetry,
+            adapter_info,
+            frames_per_scene,
+            term_width,
+            term_height,
+            res_tag,
+            Some((i, iterations)),
+        );
+
+        let report = match pass_res {
+            Ok(Some(r)) => r,
+            Ok(None) => {
+                break;
+            }
+            Err(e) => {
+                crossterm::terminal::disable_raw_mode()?;
+                let _ = renderer.leave_alternate_screen();
+                return Err(e);
+            }
+        };
+
+        let _ = dyno_term::benchmark::append_to_history(&report, dyno_term::benchmark::DEFAULT_HISTORY_FILE);
+        completed_runs.push(report);
+
+        if i < iterations && cooldown_seconds > 0 {
+            let last = completed_runs.last().unwrap();
+            let keep_going = run_cooldown_screen(
+                renderer,
+                telemetry,
+                adapter_info,
+                term_width,
+                term_height,
+                i,
+                iterations,
+                cooldown_seconds,
+                last,
+            )?;
+            if !keep_going {
+                break;
+            }
+        }
+    }
+
+    crossterm::terminal::disable_raw_mode()?;
+    let _ = renderer.leave_alternate_screen();
+
+    if completed_runs.is_empty() {
+        println!("Consistency suite aborted before any iterations completed.");
+        return Ok(());
+    }
+
+    let report = compute_consistency_report(
+        &completed_runs,
+        cooldown_seconds,
+        frames_per_scene,
+        res_tag,
+    );
+
+    let _ = save_consistency_report(&report, output_path);
+    print!("{}", format_consistency_scorecard(&report));
+    println!("Consistency report saved to: {}", output_path);
 
     Ok(())
 }

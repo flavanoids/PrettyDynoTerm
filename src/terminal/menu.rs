@@ -41,6 +41,8 @@ pub struct MenuConfig {
     pub uncapped: bool,
     pub selected_gpu_index: usize,
     pub output_path: String,
+    pub consistency_iterations: usize,
+    pub cooldown_seconds: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +50,7 @@ pub enum MenuAction {
     LaunchDemo,
     LaunchUncapped,
     RunBenchmark,
+    RunConsistency,
     RecreatePipeline,
     SwitchGpu(usize),
     Exit,
@@ -151,7 +154,7 @@ impl CliMenu {
                                 | KeyCode::Char('Q')
                                 | KeyCode::Char(' ') => {
                                     self.view = MenuView::Main;
-                                    self.selected_idx = 8;
+                                    self.selected_idx = 9;
                                 }
                                 _ => {}
                             }
@@ -176,7 +179,7 @@ impl CliMenu {
         config: &mut MenuConfig,
         _adapter_count: usize,
     ) -> io::Result<Option<MenuAction>> {
-        const MAIN_ITEMS_COUNT: usize = 10;
+        const MAIN_ITEMS_COUNT: usize = 11;
 
         match code {
             KeyCode::Up | KeyCode::Char('k') => {
@@ -188,26 +191,27 @@ impl CliMenu {
             KeyCode::Char('1') => return Ok(Some(MenuAction::LaunchDemo)),
             KeyCode::Char('2') => return Ok(Some(MenuAction::LaunchUncapped)),
             KeyCode::Char('3') => return Ok(Some(MenuAction::RunBenchmark)),
-            KeyCode::Char('4') => {
+            KeyCode::Char('4') => return Ok(Some(MenuAction::RunConsistency)),
+            KeyCode::Char('5') => {
                 self.view = MenuView::SelectScene;
                 self.selected_idx = (config.selected_scene as usize).min(SCENE_NAMES.len() - 1);
             }
-            KeyCode::Char('5') => {
+            KeyCode::Char('6') => {
                 self.view = MenuView::SelectResolution;
                 self.selected_idx = 2; // Default 4K
             }
-            KeyCode::Char('6') => {
+            KeyCode::Char('7') => {
                 self.view = MenuView::SelectFrames;
                 self.selected_idx = 1; // Default Standard 100
             }
-            KeyCode::Char('7') | KeyCode::Char('u') | KeyCode::Char('U') => {
+            KeyCode::Char('8') | KeyCode::Char('u') | KeyCode::Char('U') => {
                 config.uncapped = !config.uncapped;
             }
-            KeyCode::Char('8') => {
+            KeyCode::Char('9') => {
                 self.view = MenuView::SelectGpu;
                 self.selected_idx = config.selected_gpu_index;
             }
-            KeyCode::Char('9') | KeyCode::Char('t') | KeyCode::Char('T') => {
+            KeyCode::Char('t') | KeyCode::Char('T') => {
                 self.view = MenuView::TelemetryInfo;
             }
             KeyCode::Char('0') | KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
@@ -217,29 +221,30 @@ impl CliMenu {
                 0 => return Ok(Some(MenuAction::LaunchDemo)),
                 1 => return Ok(Some(MenuAction::LaunchUncapped)),
                 2 => return Ok(Some(MenuAction::RunBenchmark)),
-                3 => {
+                3 => return Ok(Some(MenuAction::RunConsistency)),
+                4 => {
                     self.view = MenuView::SelectScene;
                     self.selected_idx = (config.selected_scene as usize).min(SCENE_NAMES.len() - 1);
                 }
-                4 => {
+                5 => {
                     self.view = MenuView::SelectResolution;
                     self.selected_idx = 2;
                 }
-                5 => {
+                6 => {
                     self.view = MenuView::SelectFrames;
                     self.selected_idx = 1;
                 }
-                6 => {
+                7 => {
                     config.uncapped = !config.uncapped;
                 }
-                7 => {
+                8 => {
                     self.view = MenuView::SelectGpu;
                     self.selected_idx = config.selected_gpu_index;
                 }
-                8 => {
+                9 => {
                     self.view = MenuView::TelemetryInfo;
                 }
-                9 => return Ok(Some(MenuAction::Exit)),
+                10 => return Ok(Some(MenuAction::Exit)),
                 _ => {}
             },
             _ => {}
@@ -273,7 +278,7 @@ impl CliMenu {
             KeyCode::Char('8') => return self.prompt_custom_res(config),
             KeyCode::Char('0') | KeyCode::Esc | KeyCode::Backspace => {
                 self.view = MenuView::Main;
-                self.selected_idx = 4;
+                self.selected_idx = 5;
             }
             KeyCode::Enter | KeyCode::Char(' ') => {
                 if self.selected_idx < 6 {
@@ -284,7 +289,7 @@ impl CliMenu {
                     return self.prompt_custom_res(config);
                 } else {
                     self.view = MenuView::Main;
-                    self.selected_idx = 4;
+                    self.selected_idx = 5;
                 }
             }
             _ => {}
@@ -298,7 +303,7 @@ impl CliMenu {
         config.compute_height = preset.3;
         config.resolution_name = format_resolution_tag(config.compute_width, config.compute_height);
         self.view = MenuView::Main;
-        self.selected_idx = 4;
+        self.selected_idx = 5;
         Some(MenuAction::RecreatePipeline)
     }
 
@@ -309,7 +314,7 @@ impl CliMenu {
         config.compute_height = char_h * 2;
         config.resolution_name = format_resolution_tag(config.compute_width, config.compute_height);
         self.view = MenuView::Main;
-        self.selected_idx = 4;
+        self.selected_idx = 5;
         Some(MenuAction::RecreatePipeline)
     }
 
@@ -347,7 +352,7 @@ impl CliMenu {
         crossterm::terminal::enable_raw_mode()?;
 
         self.view = MenuView::Main;
-        self.selected_idx = 4;
+        self.selected_idx = 5;
 
         if changed {
             Ok(Some(MenuAction::RecreatePipeline))
@@ -357,54 +362,59 @@ impl CliMenu {
     }
 
     fn handle_scene_input(&mut self, code: KeyCode, config: &mut MenuConfig) {
-        const TOTAL_SCENE_ITEMS: usize = 7; // 6 scenes + back
+        let total_scene_items = SCENE_NAMES.len() + 1;
         match code {
             KeyCode::Up | KeyCode::Char('k') => {
-                self.selected_idx = (self.selected_idx + TOTAL_SCENE_ITEMS - 1) % TOTAL_SCENE_ITEMS;
+                self.selected_idx = (self.selected_idx + total_scene_items - 1) % total_scene_items;
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                self.selected_idx = (self.selected_idx + 1) % TOTAL_SCENE_ITEMS;
+                self.selected_idx = (self.selected_idx + 1) % total_scene_items;
             }
             KeyCode::Char('1') => {
                 config.selected_scene = 0;
                 self.view = MenuView::Main;
-                self.selected_idx = 3;
+                self.selected_idx = 4;
             }
             KeyCode::Char('2') => {
                 config.selected_scene = 1;
                 self.view = MenuView::Main;
-                self.selected_idx = 3;
+                self.selected_idx = 4;
             }
             KeyCode::Char('3') => {
                 config.selected_scene = 2;
                 self.view = MenuView::Main;
-                self.selected_idx = 3;
+                self.selected_idx = 4;
             }
             KeyCode::Char('4') => {
                 config.selected_scene = 3;
                 self.view = MenuView::Main;
-                self.selected_idx = 3;
+                self.selected_idx = 4;
             }
             KeyCode::Char('5') => {
                 config.selected_scene = 4;
                 self.view = MenuView::Main;
-                self.selected_idx = 3;
+                self.selected_idx = 4;
             }
             KeyCode::Char('6') => {
                 config.selected_scene = 5;
                 self.view = MenuView::Main;
-                self.selected_idx = 3;
+                self.selected_idx = 4;
+            }
+            KeyCode::Char('7') => {
+                config.selected_scene = 6;
+                self.view = MenuView::Main;
+                self.selected_idx = 4;
             }
             KeyCode::Char('0') | KeyCode::Esc | KeyCode::Backspace => {
                 self.view = MenuView::Main;
-                self.selected_idx = 3;
+                self.selected_idx = 4;
             }
             KeyCode::Enter | KeyCode::Char(' ') => {
-                if self.selected_idx < 6 {
+                if self.selected_idx < SCENE_NAMES.len() {
                     config.selected_scene = self.selected_idx as u32;
                 }
                 self.view = MenuView::Main;
-                self.selected_idx = 3;
+                self.selected_idx = 4;
             }
             _ => {}
         }
@@ -422,38 +432,38 @@ impl CliMenu {
             KeyCode::Char('1') => {
                 config.frames_per_scene = FRAME_PRESETS[0].2;
                 self.view = MenuView::Main;
-                self.selected_idx = 5;
+                self.selected_idx = 6;
             }
             KeyCode::Char('2') => {
                 config.frames_per_scene = FRAME_PRESETS[1].2;
                 self.view = MenuView::Main;
-                self.selected_idx = 5;
+                self.selected_idx = 6;
             }
             KeyCode::Char('3') => {
                 config.frames_per_scene = FRAME_PRESETS[2].2;
                 self.view = MenuView::Main;
-                self.selected_idx = 5;
+                self.selected_idx = 6;
             }
             KeyCode::Char('4') => {
                 config.frames_per_scene = FRAME_PRESETS[3].2;
                 self.view = MenuView::Main;
-                self.selected_idx = 5;
+                self.selected_idx = 6;
             }
             KeyCode::Char('5') => return self.prompt_custom_frames(config),
             KeyCode::Char('0') | KeyCode::Esc | KeyCode::Backspace => {
                 self.view = MenuView::Main;
-                self.selected_idx = 5;
+                self.selected_idx = 6;
             }
             KeyCode::Enter | KeyCode::Char(' ') => {
                 if self.selected_idx < 4 {
                     config.frames_per_scene = FRAME_PRESETS[self.selected_idx].2;
                     self.view = MenuView::Main;
-                    self.selected_idx = 5;
+                    self.selected_idx = 6;
                 } else if self.selected_idx == 4 {
                     return self.prompt_custom_frames(config);
                 } else {
                     self.view = MenuView::Main;
-                    self.selected_idx = 5;
+                    self.selected_idx = 6;
                 }
             }
             _ => {}
@@ -486,7 +496,7 @@ impl CliMenu {
         crossterm::terminal::enable_raw_mode()?;
 
         self.view = MenuView::Main;
-        self.selected_idx = 5;
+        self.selected_idx = 6;
         Ok(None)
     }
 
@@ -501,17 +511,17 @@ impl CliMenu {
             }
             KeyCode::Char('0') | KeyCode::Esc | KeyCode::Backspace => {
                 self.view = MenuView::Main;
-                self.selected_idx = 7;
+                self.selected_idx = 8;
             }
             KeyCode::Enter | KeyCode::Char(' ') => {
                 if self.selected_idx < adapter_count {
                     let idx = self.selected_idx;
                     self.view = MenuView::Main;
-                    self.selected_idx = 7;
+                    self.selected_idx = 8;
                     return Some(MenuAction::SwitchGpu(idx));
                 } else {
                     self.view = MenuView::Main;
-                    self.selected_idx = 7;
+                    self.selected_idx = 8;
                 }
             }
             _ => {
@@ -520,7 +530,7 @@ impl CliMenu {
                         let idx = digit as usize;
                         if idx < adapter_count {
                             self.view = MenuView::Main;
-                            self.selected_idx = 7;
+                            self.selected_idx = 8;
                             return Some(MenuAction::SwitchGpu(idx));
                         }
                     }
@@ -631,7 +641,7 @@ impl CliMenu {
         self.buf.push_str(&format_line(&res_summary));
         self.buf.push_str("\r\n");
 
-        let total_bench_frames = config.frames_per_scene * 6;
+        let total_bench_frames = config.frames_per_scene * 7;
         let bench_summary = format!(
             "\x1b[38;2;140;150;170mBenchmark Frames  : \x1b[38;2;0;255;200;1m{} frames/act \x1b[38;2;140;150;170m({} frames total)\x1b[0m",
             config.frames_per_scene, total_bench_frames
@@ -669,12 +679,13 @@ impl CliMenu {
             ("1", "Launch Interactive Demo (60 FPS V-Sync Preview)"),
             ("2", "Launch 100% Uncapped GPU Stress Test (Max Clock/Power)"),
             ("3", "Run Full Benchmark Suite (Deterministic Scorecard)"),
-            ("4", "Select Starting Scene (Act I - VII)"),
-            ("5", "Change Compute Resolution (16K -> 720p / Native / Custom)"),
-            ("6", "Configure Benchmark Frames (30 / 100 / 300 / 1000)"),
-            ("7", "Toggle Stress Mode (60 FPS Capped <-> Uncapped)"),
-            ("8", "Switch GPU Adapter (Discrete vs Integrated / CPU)"),
-            ("9", "View Live Hardware Telemetry & Diagnostics"),
+            ("4", "Run Consistency & Thermal Suite (5 Runs + Cooldown)"),
+            ("5", "Select Starting Scene (Act I - VII)"),
+            ("6", "Change Compute Resolution (16K -> 720p / Native / Custom)"),
+            ("7", "Configure Benchmark Frames (30 / 100 / 300 / 1000)"),
+            ("8", "Toggle Stress Mode (60 FPS Capped <-> Uncapped)"),
+            ("9", "Switch GPU Adapter (Discrete vs Integrated / CPU)"),
+            ("T", "View Live Hardware Telemetry & Diagnostics"),
             ("0", "Exit DynoTerm"),
         ];
 
@@ -701,7 +712,7 @@ impl CliMenu {
 
         self.buf.push_str(pad);
         self.buf.push_str(&format_centered(
-            "\x1b[38;2;140;150;170m[↑/↓] Navigate  [Enter] Select  [1-9,0] Hotkeys  [U] Uncap  [Q] Exit\x1b[0m",
+            "\x1b[38;2;140;150;170m[↑/↓] Navigate  [Enter] Select  [1-9,T,0] Hotkeys  [U] Uncap  [Q] Exit\x1b[0m",
         ));
         self.buf.push_str("\r\n");
 
@@ -836,7 +847,7 @@ impl CliMenu {
 
         self.buf.push_str(pad);
         self.buf.push_str(&format_centered(
-            "\x1b[38;2;140;150;170m[↑/↓] Navigate   [Enter] Select   [1-6/0] Quick Pick   [Esc] Cancel\x1b[0m",
+            "\x1b[38;2;140;150;170m[↑/↓] Navigate   [Enter] Select   [1-7/0] Quick Pick   [Esc] Cancel\x1b[0m",
         ));
         self.buf.push_str("\r\n");
 

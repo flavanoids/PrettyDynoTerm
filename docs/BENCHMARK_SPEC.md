@@ -118,3 +118,33 @@ Every benchmark run exports a structured JSON report for logging and leaderboard
   ]
 }
 ```
+
+---
+
+## Multi-Iteration Consistency & Thermal Stability Specification
+
+To verify determinism, measure hardware throttling, and quantify statistical run-to-run variance, `dyno_term` includes a native consistency test harness via `-c, --consistency [RUNS]` and `--cooldown <SECONDS>`.
+
+### Statistical Metrics Evaluated
+1. **Mean ($\mu$)**:
+   $$\mu = \frac{1}{N}\sum_{i=1}^N x_i$$
+2. **Sample Standard Deviation ($s$)**:
+   $$s = \sqrt{\frac{1}{N-1}\sum_{i=1}^N (x_i - \mu)^2}$$
+3. **Coefficient of Variation ($CV\%$)**:
+   $$CV\% = \left(\frac{s}{\mu}\right) \times 100\%$$
+4. **Spread / Range ($\Delta$)**:
+   $$\text{Range} = \max(x) - \min(x), \quad \text{Spread } \% = \frac{\text{Range}}{\mu} \times 100\%$$
+
+### Consistency Rating Thresholds
+- **$CV \le 0.25\%$**: `EXEMPLARY` (Top-tier determinism, negligible run-to-run noise)
+- **$CV \le 0.75\%$**: `EXCELLENT` (Industry-grade benchmark consistency)
+- **$CV \le 1.50\%$**: `VERY GOOD` (Minor background OS / scheduler variance)
+- **$CV \le 3.00\%$**: `STABLE` (Acceptable consistency)
+- **$CV > 3.00\%$**: `HIGH VARIANCE` (Noticeable thermal throttling or background contention)
+
+### Consistency JSON Schema (`dyno_consistency_results.json`)
+The resulting report includes:
+- Top-level `score_stats`, `duration_stats`, `peak_gpu_temp_stats`, `peak_hotspot_stats`, and `peak_clock_stats` summaries.
+- Per-act `scene_stats` arrays documenting Mean FPS, Standard Deviation, and CV% across all iterations.
+- Full nested `runs` array containing the raw `BenchmarkReport` data of every iteration.
+

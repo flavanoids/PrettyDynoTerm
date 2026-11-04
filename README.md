@@ -182,6 +182,25 @@ Track performance evolution, compare hardware upgrades, and detect thermal throt
 ./target/release/dyno_term --compare dyno_benchmark_results.json
 ```
 
+### 7. Multi-Iteration Consistency & Thermal Stability Suite
+Directly built into the CLI and interactive menu to measure run-to-run consistency, standard deviation, coefficient of variation ($CV\%$), clock stability, and thermal throttling over successive benchmark runs with configurable idle cooldown pauses:
+```bash
+# Run 5-iteration consistency suite with 60-second idle cooldown pauses (default)
+./target/release/dyno_term --consistency
+
+# Short alias: 3 iterations with 30s cooldown
+./target/release/dyno_term -c 3 --cooldown 30
+
+# Full stress consistency: 5 iterations of ~1-minute runs at 4K UHD
+./target/release/dyno_term -c 5 --cooldown 60 -f 880 --res 4k
+
+# Pure back-to-back thermal heat-soak test (zero cooldown)
+./target/release/dyno_term -c 5 --cooldown 0
+```
+- **Live Terminal Cooldown Screen**: Displays an interactive progress bar and live telemetry (core temp, hotspot temp, clock, power, and real-time thermal dissipation delta).
+- **Controls**: Press `[Space]` or `[Enter]` during cooldown to skip immediately to the next iteration, or `[Esc]` / `[Q]` to complete early and generate the consistency report.
+- **Scorecard Output**: Generates an ANSI box-drawn summary with iteration tables, score standard deviation ($\pm \sigma$), Coefficient of Variation ($CV\%$), spread percentage, per-act framerate stability, and thermal/clock drift analysis. Saved to `dyno_consistency_results.json`.
+
 ---
 
 ## Running Tests

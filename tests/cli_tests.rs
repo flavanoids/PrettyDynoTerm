@@ -76,6 +76,23 @@ fn test_cli_history_and_baseline_flags() {
 }
 
 #[test]
+fn test_cli_consistency_flags() {
+    let args_default = Args::try_parse_from(["dyno_term", "--consistency"])
+        .expect("Failed to parse --consistency default");
+    assert_eq!(args_default.consistency, Some(5));
+    assert_eq!(args_default.cooldown, 60);
+
+    let args_short = Args::try_parse_from(["dyno_term", "-c", "3", "--cooldown", "30"])
+        .expect("Failed to parse -c 3");
+    assert_eq!(args_short.consistency, Some(3));
+    assert_eq!(args_short.cooldown, 30);
+
+    let args_alias = Args::try_parse_from(["dyno_term", "--stability", "10"])
+        .expect("Failed to parse --stability");
+    assert_eq!(args_alias.consistency, Some(10));
+}
+
+#[test]
 fn test_cli_demo_flags() {
     let args = Args::try_parse_from(["dyno_term", "-d", "-u", "-s", "3", "--res", "1440p"])
         .expect("Failed to parse demo flags");

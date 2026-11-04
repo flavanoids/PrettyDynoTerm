@@ -15,6 +15,14 @@ pub struct Args {
     #[arg(short, long)]
     pub benchmark: bool,
 
+    /// Run multi-iteration consistency & thermal stability suite (e.g. -c 5 or --consistency 5)
+    #[arg(short = 'c', long, alias = "stability", num_args = 0..=1, default_missing_value = "5")]
+    pub consistency: Option<usize>,
+
+    /// Cooldown pause duration in seconds between consistency iterations (default: 60)
+    #[arg(long, default_value_t = 60)]
+    pub cooldown: u64,
+
     /// Run in interactive demo preview mode directly
     #[arg(short, long)]
     pub demo: bool,

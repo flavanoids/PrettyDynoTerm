@@ -29,6 +29,12 @@ impl TerminalRenderer {
         self.stdout.flush()
     }
 
+    /// Renders raw text over alternate screen home position.
+    pub fn render_raw_text(&mut self, text: &str) -> io::Result<()> {
+        write!(self.stdout, "\x1b[H{}\x1b[J", text)?;
+        self.stdout.flush()
+    }
+
     /// Renders an RGBA8 buffer to terminal using UTF-8 half-blocks (`▀`).
     pub fn render(
         &mut self,
