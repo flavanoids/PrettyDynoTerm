@@ -11,8 +11,8 @@ pub const DEFAULT_BASELINE_FILE: &str = "dyno_baseline.json";
 pub struct SceneComparison {
     pub scene_id: u32,
     pub scene_name: String,
-    pub current_score: u64,
-    pub baseline_score: u64,
+    pub current_score: f64,
+    pub baseline_score: f64,
     pub score_delta_pct: f64,
     pub current_fps: f64,
     pub baseline_fps: f64,
@@ -25,9 +25,9 @@ pub struct SceneComparison {
 pub struct BenchmarkComparison {
     pub current_timestamp: String,
     pub baseline_timestamp: String,
-    pub current_score: u64,
-    pub baseline_score: u64,
-    pub score_delta_pts: i64,
+    pub current_score: f64,
+    pub baseline_score: f64,
+    pub score_delta_pts: f64,
     pub score_delta_pct: f64,
     pub current_clock_mhz: u32,
     pub baseline_clock_mhz: u32,
@@ -93,9 +93,9 @@ pub fn load_baseline(path: &str) -> Option<BenchmarkReport> {
 
 /// Compares a current benchmark report against a baseline report.
 pub fn compare_reports(current: &BenchmarkReport, baseline: &BenchmarkReport) -> BenchmarkComparison {
-    let score_delta_pts = current.overall_score as i64 - baseline.overall_score as i64;
-    let score_delta_pct = if baseline.overall_score > 0 {
-        (score_delta_pts as f64 / baseline.overall_score as f64) * 100.0
+    let score_delta_pts = current.overall_score - baseline.overall_score;
+    let score_delta_pct = if baseline.overall_score > 0.0 {
+        (score_delta_pts / baseline.overall_score) * 100.0
     } else {
         0.0
     };
@@ -121,11 +121,11 @@ pub fn compare_reports(current: &BenchmarkReport, baseline: &BenchmarkReport) ->
         let (base_score, base_fps, base_ft) = if let Some(b) = base_scene_opt {
             (b.score, b.avg_fps, b.avg_frametime_ms)
         } else {
-            (0, 0.0, 0.0)
+            (0.0, 0.0, 0.0)
         };
 
-        let sc_delta_pct = if base_score > 0 {
-            ((cur_scene.score as f64 - base_score as f64) / base_score as f64) * 100.0
+        let sc_delta_pct = if base_score > 0.0 {
+            ((cur_scene.score - base_score) / base_score) * 100.0
         } else {
             0.0
         };
@@ -227,8 +227,8 @@ pub fn format_comparison_table(comp: &BenchmarkComparison) -> String {
     out.push_str(&format!(
         "  \x1b[1m{:<26}\x1b[0m \x1b[38;2;0;255;200;1m{:<18}\x1b[0m {:<22} {}\r\n",
         "OVERALL DYNO SCORE",
-        format!("{} pts", comp.current_score),
-        format!("{} pts", comp.baseline_score),
+        format!("{:.2} pts", comp.current_score),
+        format!("{:.2} pts", comp.baseline_score),
         delta_col
     ));
 
@@ -340,7 +340,7 @@ pub fn format_history_table(history: &[BenchmarkReport], baseline_timestamp: Opt
             "  {:<2} {:<20} \x1b[1m{:<15}\x1b[0m {:<24} {}\r\n",
             i + 1,
             short_time,
-            format!("{} pts", r.overall_score),
+            format!("{:.2} pts", r.overall_score),
             gpu_short,
             tag
         ));

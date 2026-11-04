@@ -22,7 +22,7 @@ pub struct Hud {
     pub act_total: usize,
     pub act_progress_pct: f32,
     pub overall_progress_pct: f32,
-    pub current_score: u64,
+    pub current_score: f64,
     pub iteration_info: Option<(usize, usize)>,
 
     // Demo session telemetry
@@ -52,7 +52,7 @@ impl Hud {
             act_total: 7,
             act_progress_pct: 0.0,
             overall_progress_pct: 0.0,
-            current_score: 0,
+            current_score: 0.0,
             iteration_info: None,
             demo_elapsed_secs: 0.0,
             demo_frame_count: 0,
@@ -444,9 +444,9 @@ impl Hud {
             };
 
             let l3 = if c3_w >= 18 {
-                format!("{label_color}Score: {highlight}{:>8} pts", self.current_score)
+                format!("{label_color}Score: {highlight}{:>7.2} pts", self.current_score)
             } else {
-                format!("{highlight}{:>7}", self.current_score)
+                format!("{highlight}{:>6.1}", self.current_score)
             };
             (l1, l2, l3)
         } else {
@@ -613,7 +613,7 @@ mod tests {
             hud.avg_frametime_ms = 10.58;
             hud.p1_low_ms = 11.12;
             hud.rays_per_sec = 0.79;
-            hud.current_score = 7813258;
+            hud.current_score = 781.32;
             for ft in [10.2, 10.5, 10.6, 11.1, 10.4, 10.5, 12.0, 10.6] {
                 hud.record_frametime(ft);
             }

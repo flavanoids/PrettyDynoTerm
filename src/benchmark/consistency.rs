@@ -316,7 +316,7 @@ pub fn format_consistency_scorecard(report: &ConsistencyReport) -> String {
     for (i, run) in report.runs.iter().enumerate() {
         let run_num = format!("#{}", i + 1);
         let time_str = format!("{:>5.2}s", run.total_elapsed_seconds);
-        let score_str = format!("{:>9} pts", run.overall_score);
+        let score_str = format!("{:>8.2} pts", run.overall_score);
         let temp_str = format!("{:>4.0}°C", run.peak_gpu_temp_c);
         let hot_str = format!("{:>4.0}°C", run.peak_gpu_hotspot_c);
         let clock_str = format!("{:>4}MHz", run.peak_gpu_clock_mhz);
@@ -332,10 +332,10 @@ pub fn format_consistency_scorecard(report: &ConsistencyReport) -> String {
 
     // Aggregate statistics
     let (grade_str, grade_color) = consistency_grade(report.score_stats.cv_pct);
-    let mean_score_fmt = format!("{} pts", format_int_with_commas(report.score_stats.mean.round() as u64));
+    let mean_score_fmt = format!("{:.2} pts", report.score_stats.mean);
     let std_score_fmt = format!(
-        "±{} pts ({:.3}% CV)",
-        format_int_with_commas(report.score_stats.std_dev.round() as u64),
+        "±{:.2} pts ({:.3}% CV)",
+        report.score_stats.std_dev,
         report.score_stats.cv_pct
     );
     let spread_pct = if report.score_stats.mean > 0.0 {
@@ -344,8 +344,8 @@ pub fn format_consistency_scorecard(report: &ConsistencyReport) -> String {
         0.0
     };
     let spread_fmt = format!(
-        "{} pts ({:.3}% delta)",
-        format_int_with_commas(report.score_stats.range.round() as u64),
+        "{:.2} pts ({:.3}% delta)",
+        report.score_stats.range,
         spread_pct
     );
 
@@ -429,20 +429,6 @@ fn truncate_str(s: &str, max_len: usize) -> String {
     }
 }
 
-fn format_int_with_commas(n: u64) -> String {
-    let s = n.to_string();
-    let mut result = String::new();
-    let chars: Vec<char> = s.chars().collect();
-    let len = chars.len();
-    for (i, &c) in chars.iter().enumerate() {
-        if i > 0 && (len - i) % 3 == 0 {
-            result.push(',');
-        }
-        result.push(c);
-    }
-    result
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,7 +484,7 @@ mod tests {
             avg_fps: 100.0,
             avg_frametime_ms: 10.0,
             p1_low_frametime_ms: 11.0,
-            score: 10_000,
+            score: 100.00,
         };
 
         let run1 = BenchmarkReport {
@@ -506,7 +492,7 @@ mod tests {
             system_info: sys.clone(),
             total_elapsed_seconds: 10.0,
             total_frames: 700,
-            overall_score: 100_000,
+            overall_score: 1000.00,
             peak_gpu_temp_c: 65.0,
             peak_gpu_hotspot_c: 85.0,
             peak_gpu_util_pct: 99.0,
@@ -519,13 +505,13 @@ mod tests {
         };
 
         let mut run2 = run1.clone();
-        run2.overall_score = 100_500;
+        run2.overall_score = 1005.00;
         run2.peak_gpu_temp_c = 66.0;
 
         let report = compute_consistency_report(&[run1, run2], 60, 100, "4K UHD");
         assert_eq!(report.iterations_completed, 2);
         assert_eq!(report.cooldown_seconds, 60);
-        assert!((report.score_stats.mean - 100_250.0).abs() < 1e-3);
+        assert!((report.score_stats.mean - 1002.50).abs() < 1e-3);
         assert_eq!(report.scene_stats.len(), 1);
 
         let scorecard = format_consistency_scorecard(&report);

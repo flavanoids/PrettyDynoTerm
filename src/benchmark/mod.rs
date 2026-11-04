@@ -19,6 +19,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::time::{Duration, Instant};
 
+pub const SCORE_SCALE_DIVISOR: f64 = 20_000_000.0;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SceneResult {
     pub scene_id: u32,
@@ -28,7 +30,7 @@ pub struct SceneResult {
     pub avg_fps: f64,
     pub avg_frametime_ms: f64,
     pub p1_low_frametime_ms: f64,
-    pub score: u64,
+    pub score: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,7 +39,7 @@ pub struct BenchmarkReport {
     pub system_info: SystemReport,
     pub total_elapsed_seconds: f64,
     pub total_frames: u32,
-    pub overall_score: u64,
+    pub overall_score: f64,
     pub peak_gpu_temp_c: f32,
     #[serde(default)]
     pub peak_gpu_hotspot_c: f32,
@@ -185,14 +187,14 @@ impl BenchmarkScorer {
         GpuTelemetryAssessment::evaluate(&self.snapshots, final_stats)
     }
 
-    pub fn current_scene_score(&self, scene_id: u32, pixels_per_frame: u64) -> u64 {
+    pub fn current_scene_score(&self, scene_id: u32, pixels_per_frame: u64) -> f64 {
         let count = self.frametimes.len() as f64;
         if count == 0.0 {
-            return 0;
+            return 0.0;
         }
         let total_time_secs: f64 = self.frametimes.iter().map(|d| d.as_secs_f64()).sum();
         if total_time_secs <= 0.0 {
-            return 0;
+            return 0.0;
         }
         let weight = match scene_id {
             0 => 1.0, // Waves
@@ -205,7 +207,7 @@ impl BenchmarkScorer {
             _ => 1.0,
         };
         let raw_workload = (count * pixels_per_frame as f64) * weight;
-        ((raw_workload / total_time_secs) / 100.0) as u64
+        (raw_workload / total_time_secs) / SCORE_SCALE_DIVISOR
     }
 
     pub fn compute_scene_result(
@@ -224,7 +226,7 @@ impl BenchmarkScorer {
                 avg_fps: 0.0,
                 avg_frametime_ms: 0.0,
                 p1_low_frametime_ms: 0.0,
-                score: 0,
+                score: 0.0,
             };
         }
 
@@ -256,7 +258,7 @@ impl BenchmarkScorer {
         };
 
         let raw_workload = (count * pixels_per_frame as f64) * weight;
-        let score = ((raw_workload / total_time_secs) / 100.0) as u64;
+        let score = (raw_workload / total_time_secs) / SCORE_SCALE_DIVISOR;
 
         // Clear frametimes for next scene
         self.frametimes.clear();
@@ -304,8 +306,8 @@ mod tests {
         let res = scorer.compute_scene_result(0, "Empty", 1920 * 1080);
         assert_eq!(res.frames_rendered, 0);
         assert_eq!(res.avg_fps, 0.0);
-        assert_eq!(res.score, 0);
-        assert_eq!(scorer.current_scene_score(0, 1920 * 1080), 0);
+        assert_eq!(res.score, 0.0);
+        assert_eq!(scorer.current_scene_score(0, 1920 * 1080), 0.0);
     }
 
     #[test]
@@ -358,7 +360,7 @@ mod tests {
             },
             total_elapsed_seconds: 12.5,
             total_frames: 600,
-            overall_score: 95400,
+            overall_score: 954.00,
             peak_gpu_temp_c: 68.0,
             peak_gpu_hotspot_c: 78.0,
             peak_gpu_util_pct: 99.5,
@@ -373,7 +375,7 @@ mod tests {
                 avg_fps: 60.2,
                 avg_frametime_ms: 16.6,
                 p1_low_frametime_ms: 18.2,
-                score: 15900,
+                score: 159.00,
             }],
             gpu_telemetry: None,
             telemetry_samples: vec![],
@@ -383,7 +385,7 @@ mod tests {
         let deserialized: BenchmarkReport =
             serde_json::from_str(&json).expect("Deserialization failed");
 
-        assert_eq!(deserialized.overall_score, 95400);
+        assert_eq!(deserialized.overall_score, 954.00);
         assert_eq!(deserialized.system_info.gpu_name, "Test GPU");
         assert_eq!(deserialized.scene_results.len(), 1);
         assert_eq!(deserialized.scene_results[0].scene_name, "Waves");
@@ -402,7 +404,7 @@ mod tests {
             },
             total_elapsed_seconds: 1.0,
             total_frames: 60,
-            overall_score: 1000,
+            overall_score: 100.00,
             peak_gpu_temp_c: 50.0,
             peak_gpu_hotspot_c: 55.0,
             peak_gpu_util_pct: 80.0,
@@ -437,7 +439,7 @@ mod tests {
             },
             total_elapsed_seconds: 10.0,
             total_frames: 600,
-            overall_score: 100_000,
+            overall_score: 1000.00,
             peak_gpu_temp_c: 65.0,
             peak_gpu_hotspot_c: 75.0,
             peak_gpu_util_pct: 99.0,
@@ -452,7 +454,7 @@ mod tests {
                 avg_fps: 62.5,
                 avg_frametime_ms: 16.0,
                 p1_low_frametime_ms: 17.0,
-                score: 16000,
+                score: 160.00,
             }],
             gpu_telemetry: None,
             telemetry_samples: vec![],
@@ -463,7 +465,7 @@ mod tests {
             system_info: report1.system_info.clone(),
             total_elapsed_seconds: 9.5,
             total_frames: 600,
-            overall_score: 105_000,
+            overall_score: 1050.00,
             peak_gpu_temp_c: 67.0,
             peak_gpu_hotspot_c: 77.0,
             peak_gpu_util_pct: 99.0,
@@ -478,7 +480,7 @@ mod tests {
                 avg_fps: 66.6,
                 avg_frametime_ms: 15.0,
                 p1_low_frametime_ms: 16.0,
-                score: 17000,
+                score: 170.00,
             }],
             gpu_telemetry: None,
             telemetry_samples: vec![],
@@ -497,17 +499,17 @@ mod tests {
 
         let history = load_history(hist_str).expect("Load history failed");
         assert_eq!(history.len(), 2);
-        assert_eq!(history[0].overall_score, 100_000);
-        assert_eq!(history[1].overall_score, 105_000);
+        assert_eq!(history[0].overall_score, 1000.00);
+        assert_eq!(history[1].overall_score, 1050.00);
 
         // 2. Save baseline
         save_baseline(&report1, base_str).expect("Save baseline failed");
         let baseline = load_baseline(base_str).expect("Load baseline failed");
-        assert_eq!(baseline.overall_score, 100_000);
+        assert_eq!(baseline.overall_score, 1000.00);
 
         // 3. Compare reports
         let comparison = compare_reports(&report2, &baseline);
-        assert_eq!(comparison.score_delta_pts, 5_000);
+        assert_eq!(comparison.score_delta_pts, 50.0);
         assert!((comparison.score_delta_pct - 5.0).abs() < 0.01);
         assert!((comparison.clock_delta_pct - 2.0).abs() < 0.01);
         assert!((comparison.temp_delta_c - 2.0).abs() < 0.01);

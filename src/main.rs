@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map_err(|e| format!("Invalid benchmark JSON in '{}': {}", report_path, e))?;
         dyno_term::benchmark::save_baseline(&report, baseline_path)?;
         println!(
-            "\x1b[38;2;0;255;128;1m✓ Pinned benchmark from '{}' ({} pts, {}) as active reference baseline ('{}')\x1b[0m",
+            "\x1b[38;2;0;255;128;1m✓ Pinned benchmark from '{}' ({:.2} pts, {}) as active reference baseline ('{}')\x1b[0m",
             report_path, report.overall_score, report.timestamp, baseline_path
         );
         return Ok(());
@@ -515,7 +515,7 @@ fn execute_benchmark_pass(
     let compute_pixels = (pipeline.width * pipeline.height) as u64;
     let total_bench_frames = (frames_per_scene * 7).max(1);
     let mut total_frames_completed: u32 = 0;
-    let mut cumulative_score: u64 = 0;
+    let mut cumulative_score: f64 = 0.0;
 
     let mut term_preview_buf = vec![0u8; term_width * term_height * 4];
     let mut nbody = NBodySimulation::new(32_000, pipeline.width as usize, pipeline.height as usize);
@@ -651,7 +651,7 @@ fn execute_benchmark_pass(
     }
 
     let total_elapsed = total_benchmark_start.elapsed().as_secs_f64();
-    let total_score: u64 = scene_results.iter().map(|s| s.score).sum();
+    let total_score: f64 = ((scene_results.iter().map(|s| s.score).sum::<f64>()) * 100.0).round() / 100.0;
 
     let stats = telemetry.sample(&adapter_info.name);
     let assessment = scorer.generate_telemetry_assessment(&stats);
@@ -753,7 +753,7 @@ fn run_cooldown_screen(
         buf.push_str("├──────────────────────────────────────────────────────────────────────────┤\x1b[0m\r\n");
 
         let line1 = format!(
-            "Completed Run     : \x1b[38;2;255;255;255;1m{} of {}\x1b[38;2;140;150;170m (\x1b[38;2;255;180;0;1m{:>9} pts\x1b[38;2;140;150;170m, \x1b[38;2;255;255;255m{:.2}s\x1b[38;2;140;150;170m)",
+            "Completed Run     : \x1b[38;2;255;255;255;1m{} of {}\x1b[38;2;140;150;170m (\x1b[38;2;255;180;0;1m{:>8.2} pts\x1b[38;2;140;150;170m, \x1b[38;2;255;255;255m{:.2}s\x1b[38;2;140;150;170m)",
             completed_run, total_runs, last_report.overall_score, last_report.total_elapsed_seconds
         );
         buf.push_str(&format_box_line(&line1, 72));
@@ -969,7 +969,7 @@ fn print_scorecard(report: &BenchmarkReport, output_path: &str, resolution: &str
     for res in &report.scene_results {
         let name_trimmed: String = res.scene_name.chars().take(28).collect();
         let frame_stat = format!("{:>5.1}ms ({:>4.1})", res.avg_frametime_ms, res.p1_low_frametime_ms);
-        let score_stat = format!("{:>7} pts", res.score);
+        let score_stat = format!("{:>6.2} pts", res.score);
         println!(
             "\x1b[38;2;140;150;170m│ \x1b[38;2;255;255;255;1m{:<28} \x1b[38;2;0;220;255m│ \x1b[38;2;0;255;200;1m{:>5.1} FPS \x1b[38;2;0;220;255m│ \x1b[38;2;255;255;255m{:<16} \x1b[38;2;0;220;255m│ \x1b[38;2;255;180;0;1m{:<10} \x1b[38;2;0;220;255m│",
             name_trimmed, res.avg_fps, frame_stat, score_stat
@@ -997,11 +997,12 @@ fn print_scorecard(report: &BenchmarkReport, output_path: &str, resolution: &str
         print!("{}", format_gpu_assessment_box(assessment));
     }
     println!("\x1b[38;2;0;220;255m├──────────────────────────────────────────────────────────────────────────┤\x1b[0m");
+    let score_str = format!("{:>10.2} POINTS ", report.overall_score);
     println!(
-        "\x1b[38;2;255;255;255;1m│ OVERALL DYNO BENCHMARK SCORE:                 \x1b[38;2;255;180;0;1m{:>12} POINTS         \x1b[38;2;0;220;255m│",
-        report.overall_score
+        "\x1b[38;2;255;255;255;1m│ OVERALL DYNO BENCHMARK SCORE:                          \x1b[38;2;255;180;0;1m{}\x1b[38;2;0;220;255m│",
+        score_str
     );
-    println!("\x1b[38;2;0;220;255m└────────────────────────────────────────────────────────────────────────┘\x1b[0m");
+    println!("\x1b[38;2;0;220;255m└──────────────────────────────────────────────────────────────────────────┘\x1b[0m");
     println!("\x1b[38;2;140;150;170mReport saved to: \x1b[38;2;0;255;200m{}\x1b[0m\n", output_path);
 }
 

@@ -365,11 +365,11 @@ fn test_benchmark_suite() -> TestReport {
     }
 
     let res = scorer.compute_scene_result(0, "Waves", 1920 * 1080);
-    if res.frames_rendered != 2 || res.score == 0 || res.avg_fps <= 0.0 {
+    if res.frames_rendered != 2 || res.score <= 0.0 || res.avg_fps <= 0.0 {
         passed = false;
         details.push("BenchmarkScorer scene result calculation failed".to_string());
     } else {
-        details.push(format!("Scene result scoring & FPS statistics verified (score: {})", res.score));
+        details.push(format!("Scene result scoring & FPS statistics verified (score: {:.2})", res.score));
     }
 
     // JSON round-trip
@@ -384,7 +384,7 @@ fn test_benchmark_suite() -> TestReport {
         },
         total_elapsed_seconds: 5.0,
         total_frames: 300,
-        overall_score: 50000,
+        overall_score: 500.00,
         peak_gpu_temp_c: 65.0,
         peak_gpu_hotspot_c: 75.0,
         peak_gpu_util_pct: 95.0,
@@ -399,7 +399,7 @@ fn test_benchmark_suite() -> TestReport {
     match serde_json::to_string(&report) {
         Ok(json) => match serde_json::from_str::<BenchmarkReport>(&json) {
             Ok(parsed) => {
-                if parsed.overall_score == report.overall_score {
+                if (parsed.overall_score - report.overall_score).abs() < 1e-4 {
                     details.push("BenchmarkReport JSON serialization round-trip verified".to_string());
                 } else {
                     passed = false;

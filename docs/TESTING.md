@@ -43,14 +43,14 @@ When `-t, --test` is provided, `dyno_term` runs in non-interactive stdout mode, 
         • Multi-threaded Rayon physics integration verified (0 NaNs/Infs)
         • Preview frame buffer rasterizer & color blending verified
   [2/6] WGSL Compute Shaders & Uniform Layouts     [ PASS ]
-        • UNIFIED_SHADER WGSL structure & 5 GPU acts verified
+        • UNIFIED_SHADER WGSL structure & 6 GPU acts verified
         • DOWNSAMPLE_SHADER WGSL structure & workgroups verified
         • Uniforms (48B, 16B aligned) and DownsampleUniforms (16B) layout verified
   [3/6] GPU Hardware & Compute Pipeline            [ PASS ]
         • Found 2 GPU adapter(s)
         • Active GPU: AMD Radeon RX 6650 XT (RADV NAVI23) | Vulkan | DiscreteGpu
         • Pipeline instantiated @ 320x180 (57600 pixels)
-        • All 5 GPU shader scenes (Waves, Mandelbulb, Black Hole, Tornado, Cardiac) compute & downsampling verified
+        • All 6 GPU shader scenes (Waves, Mandelbulb, Black Hole, Tornado, Cardiac, LBM Vortex) compute & downsampling verified
   [4/6] Telemetry & Hardware Sensors               [ PASS ]
         • Detected 16 system CPU threads
         • CPU Model: 12th Gen Intel(R) Core(TM) i5-12600K
@@ -58,7 +58,7 @@ When `-t, --test` is provided, `dyno_term` runs in non-interactive stdout mode, 
         • TelemetryCollector background sampling worker verified
   [5/6] Benchmark Engine & Scorer Math             [ PASS ]
         • BenchmarkScorer peak metric tracking verified
-        • Scene result scoring & FPS statistics verified (score: 1382400)
+        • Scene result scoring & FPS statistics verified (score: 6.91)
         • BenchmarkReport JSON serialization round-trip verified
   [6/6] Terminal Engine & ANSI Renderer            [ PASS ]
         • Resolution formatting preset tags verified

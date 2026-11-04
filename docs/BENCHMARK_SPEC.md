@@ -51,11 +51,18 @@ $$\text{Raw Workload} = \left( N_{\text{frames}} \times \text{Pixels}_{\text{fra
 | **Act VI** | Lattice Boltzmann Flow | Computational Fluid Dynamics | $1.5\times$ (D2Q9 BGK collision relaxation + von Kármán street) |
 | **Act VII** | Kinetic Supernova | Celestial Gravitation | $1.0\times$ (32,000 $N$-Body particle gravitational forces) |
 
-The final score is computed as throughput normalized to completion time:
+The final score is computed as throughput normalized to completion time using a standardized divisor ($20,000,000$ operations/sec = $1.00\text{ pt}$):
 
-$$\text{Score}_{\text{scene}} = \frac{\text{Raw Workload}}{\text{Elapsed Time (seconds)} \times 100}$$
+$$\text{Score}_{\text{scene}} = \frac{\text{Raw Workload}}{\text{Elapsed Time (seconds)} \times 20,000,000}$$
 
 $$\text{Dyno Benchmark Score} = \sum_{i=1}^{7} \text{Score}_{\text{scene } i}$$
+
+### Score Scaling & Calibration
+Scores are formatted to two decimal places (`f64`, e.g. `898.66 pts`) to provide an intuitive, memorable decimal scale:
+- **Baseline Scale**: $20.0\text{ Giga-Pixel-Ops/s} = 1,000.00\text{ pts}$ ($1.0\text{ Giga-Pixel-Ops/s} = 50.00\text{ pts}$).
+- **Mid-Range Baseline**: A modern mainstream GPU (e.g. AMD Radeon RX 6650 XT) scores $\approx 850.00 - 950.00\text{ pts}$ at 4K UHD.
+- **Enthusiast / Flagship**: Modern high-end GPUs (e.g. NVIDIA RTX 4080 / 4090) score $\approx 1,500.00 - 2,500.00\text{ pts}$.
+- **Entry-Level / Integrated**: Modern APUs and entry GPUs score $\approx 100.00 - 250.00\text{ pts}$.
 
 ---
 
@@ -133,7 +140,7 @@ Every benchmark run exports a structured JSON report including top-level peak me
   },
   "total_elapsed_seconds": 6.82,
   "total_frames": 700,
-  "overall_score": 180940817,
+  "overall_score": 898.66,
   "peak_gpu_temp_c": 66.0,
   "peak_gpu_hotspot_c": 99.0,
   "peak_gpu_util_pct: 100.0,
