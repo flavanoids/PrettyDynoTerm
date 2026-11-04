@@ -41,22 +41,42 @@ Each scene possesses a micro-architectural weighting factor reflecting its arith
 
 $$\text{Raw Workload} = \left( N_{\text{frames}} \times \text{Pixels}_{\text{frame}} \right) \times W_{\text{scene}}$$
 
-| Act | Scene Name | Arithmetic Weight ($W_{\text{scene}}$) |
-| :--- | :--- | :--- |
-| **Act I** | Bioluminescent Ocean | $1.0\times$ (10 Gerstner octaves + Volumetric mist + Reflections) |
-| **Act II** | The Mandelbulb Core | $1.8\times$ (Order-8 polynomial unrolled fractal loops) |
-| **Act III** | Relativistic Black Hole | $1.4\times$ (80 Curved geodesic spacetime integrations) |
-| **Act IV** | Kinetic Supernova | $1.0\times$ (32,000 $N$-Body particle gravitational forces) |
+| Act | Scene Name | Domain | Arithmetic Weight ($W_{\text{scene}}$) |
+| :--- | :--- | :--- | :---: |
+| **Act I** | Atmospheric Ocean Waves | Hydrodynamics | $1.0\times$ (14 Gerstner octaves + Mie clouds + reflection) |
+| **Act II** | The Mandelbulb Core | Fractal Algebra | $1.8\times$ (Order-8 polynomial unrolled fractal loops + cone AO) |
+| **Act III** | Relativistic Black Hole | General Relativity | $1.4\times$ (80 RK4 curved geodesic spacetime integrations) |
+| **Act IV** | Tornadic Mesocyclone | Severe Meteorology | $1.2\times$ (Burgers-Rott vortex + cyclostrophic pressure deficit) |
+| **Act V** | Cardiac Electrophysiology | Biophysics / Medicine | $1.3\times$ (Aliev-Panfilov reaction-diffusion PDE + rotors) |
+| **Act VI** | Lattice Boltzmann Flow | Computational Fluid Dynamics | $1.5\times$ (D2Q9 BGK collision relaxation + von Kármán street) |
+| **Act VII** | Kinetic Supernova | Celestial Gravitation | $1.0\times$ (32,000 $N$-Body particle gravitational forces) |
 
 The final score is computed as throughput normalized to completion time:
 
 $$\text{Score}_{\text{scene}} = \frac{\text{Raw Workload}}{\text{Elapsed Time (seconds)} \times 100}$$
 
-$$\text{Dyno Benchmark Score} = \sum_{i=1}^{4} \text{Score}_{\text{scene } i}$$
+$$\text{Dyno Benchmark Score} = \sum_{i=1}^{7} \text{Score}_{\text{scene } i}$$
 
 ---
 
-## 4. Frametime Consistency & 1% Lows
+## 4. Historical Baseline & Comparison Engine
+
+`dyno_term` features a built-in persistent benchmark history ledger and delta comparison engine:
+- **Baseline Reference**: Users can pin any run as the reference baseline (`dyno_term --set-baseline <FILE>`), creating `dyno_baseline.json`.
+- **Chronological History**: Every benchmark run is appended to `dyno_benchmark_history.jsonl` with timestamps, hardware specs, and per-act scores.
+- **Automated Comparison Table**: Post-benchmark runs automatically diff against the pinned baseline, reporting:
+  - Overall score delta ($\pm \%$ and points).
+  - Per-act FPS, frametime, and score deltas.
+  - Hardware clock and thermal deltas.
+  - **Thermal Throttling Heuristics**: Flags regressions if GPU frequency drops $> 4.5\%$ while temperatures spike.
+- **CLI Management**:
+  - `dyno_term --history`: Prints the chronological table of all past runs with `[BASELINE]` tags.
+  - `dyno_term --compare <REPORT_PATH>`: Diffs a specific report against the active baseline.
+  - `dyno_term --set-baseline [PATH]`: Pins the latest or specified report as active baseline.
+
+---
+
+## 5. Frametime Consistency & 1% Lows
 
 Average FPS alone can hide stuttering, thread stalls, and pipeline bubbles. `dyno_term` tracks the entire distribution of frame execution intervals:
 - **Average Frametime**: Mean latency per frame ($\mu$).

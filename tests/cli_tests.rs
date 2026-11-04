@@ -48,6 +48,34 @@ fn test_cli_benchmark_flags() {
 }
 
 #[test]
+fn test_cli_history_and_baseline_flags() {
+    let args_hist =
+        Args::try_parse_from(["dyno_term", "--history"]).expect("Failed to parse --history");
+    assert!(args_hist.history);
+
+    let args_set_base_default =
+        Args::try_parse_from(["dyno_term", "--set-baseline"]).expect("Failed to parse --set-baseline");
+    assert_eq!(
+        args_set_base_default.set_baseline,
+        Some("dyno_benchmark_results.json".to_string())
+    );
+
+    let args_set_base_custom =
+        Args::try_parse_from(["dyno_term", "--set-baseline", "custom_report.json"])
+            .expect("Failed to parse --set-baseline custom");
+    assert_eq!(
+        args_set_base_custom.set_baseline,
+        Some("custom_report.json".to_string())
+    );
+
+    let args_compare =
+        Args::try_parse_from(["dyno_term", "--compare", "new_report.json", "--baseline", "base.json"])
+            .expect("Failed to parse --compare");
+    assert_eq!(args_compare.compare, Some("new_report.json".to_string()));
+    assert_eq!(args_compare.baseline, Some("base.json".to_string()));
+}
+
+#[test]
 fn test_cli_demo_flags() {
     let args = Args::try_parse_from(["dyno_term", "-d", "-u", "-s", "3", "--res", "1440p"])
         .expect("Failed to parse demo flags");

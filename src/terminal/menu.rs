@@ -4,13 +4,14 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
 
-pub const SCENE_NAMES: [&str; 6] = [
+pub const SCENE_NAMES: [&str; 7] = [
     "Act I: Atmospheric Ocean Waves (GPU)",
     "Act II: The Mandelbulb Core (GPU)",
     "Act III: Relativistic Black Hole (GPU)",
     "Act IV: Tornadic Mesocyclone (GPU - Weather Model)",
     "Act V: Cardiac Electrophysiology (GPU - Medical Model)",
-    "Act VI: Kinetic N-Body Supernova (CPU)",
+    "Act VI: Lattice Boltzmann Flow (GPU - CFD Vortex Street)",
+    "Act VII: Kinetic N-Body Supernova (CPU)",
 ];
 
 pub const RESOLUTION_PRESETS: [(&str, &str, u32, u32); 7] = [
@@ -24,10 +25,10 @@ pub const RESOLUTION_PRESETS: [(&str, &str, u32, u32); 7] = [
 ];
 
 pub const FRAME_PRESETS: [(&str, &str, u32); 4] = [
-    ("Quick Check",    "  30 frames / act   (180 frames total,  ~3 sec)", 30),
-    ("Standard Bench", " 100 frames / act   (600 frames total,  ~9 sec)", 100),
-    ("Stress Test",    " 300 frames / act   (1800 frames total, ~27 sec)", 300),
-    ("Endurance Soak", "1000 frames / act   (6000 frames total, ~90 sec)", 1000),
+    ("Quick Check",    "  30 frames / act   (210 frames total,  ~3 sec)", 30),
+    ("Standard Bench", " 100 frames / act   (700 frames total,  ~10 sec)", 100),
+    ("Stress Test",    " 300 frames / act   (2100 frames total, ~30 sec)", 300),
+    ("Endurance Soak", "1000 frames / act   (7000 frames total, ~100 sec)", 1000),
 ];
 
 #[derive(Debug, Clone)]
@@ -668,7 +669,7 @@ impl CliMenu {
             ("1", "Launch Interactive Demo (60 FPS V-Sync Preview)"),
             ("2", "Launch 100% Uncapped GPU Stress Test (Max Clock/Power)"),
             ("3", "Run Full Benchmark Suite (Deterministic Scorecard)"),
-            ("4", "Select Starting Scene (Act I - VI)"),
+            ("4", "Select Starting Scene (Act I - VII)"),
             ("5", "Change Compute Resolution (16K -> 720p / Native / Custom)"),
             ("6", "Configure Benchmark Frames (30 / 100 / 300 / 1000)"),
             ("7", "Toggle Stress Mode (60 FPS Capped <-> Uncapped)"),

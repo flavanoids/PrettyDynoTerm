@@ -1,3 +1,10 @@
+pub mod history;
+pub use history::{
+    append_to_history, compare_reports, format_comparison_table, format_history_table,
+    load_baseline, load_history, save_baseline, BenchmarkComparison, SceneComparison,
+    DEFAULT_BASELINE_FILE, DEFAULT_HISTORY_FILE,
+};
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::time::Duration;
@@ -106,9 +113,13 @@ impl BenchmarkScorer {
             return 0;
         }
         let weight = match scene_id {
-            0 => 1.0,
-            1 => 1.8,
-            2 => 1.4,
+            0 => 1.0, // Waves
+            1 => 1.8, // Mandelbulb
+            2 => 1.4, // Black hole
+            3 => 1.2, // Tornado
+            4 => 1.3, // Cardiac
+            5 => 1.5, // Lattice Boltzmann CFD
+            6 => 1.0, // CPU N-Body
             _ => 1.0,
         };
         let raw_workload = (count * pixels_per_frame as f64) * weight;
@@ -155,6 +166,10 @@ impl BenchmarkScorer {
             0 => 1.0, // Waves: wave octaves + Fresnel
             1 => 1.8, // Mandelbulb: heavy 3D fractal ALU
             2 => 1.4, // Black hole: curved geodesics
+            3 => 1.2, // Tornado: Burgers-Rott mesocyclone
+            4 => 1.3, // Cardiac: Aliev-Panfilov electrophysiology
+            5 => 1.5, // Lattice Boltzmann CFD: D2Q9 BGK vortex shedding
+            6 => 1.0, // CPU N-Body gravitation
             _ => 1.0,
         };
 
@@ -321,5 +336,105 @@ mod tests {
         let content = fs::read_to_string(path_str).expect("Failed to read report");
         assert!(content.contains("Mock GPU"));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_history_and_baseline_workflow() {
+        let report1 = BenchmarkReport {
+            timestamp: "2026-11-04 10:00:00 UTC".to_string(),
+            system_info: SystemReport {
+                gpu_name: "Test GPU".to_string(),
+                gpu_backend: "Vulkan".to_string(),
+                gpu_driver: "radv".to_string(),
+                cpu_name: "Test CPU".to_string(),
+                cpu_threads: 16,
+            },
+            total_elapsed_seconds: 10.0,
+            total_frames: 600,
+            overall_score: 100_000,
+            peak_gpu_temp_c: 65.0,
+            peak_gpu_hotspot_c: 75.0,
+            peak_gpu_util_pct: 99.0,
+            peak_gpu_power_w: 120.0,
+            peak_gpu_clock_mhz: 2500,
+            peak_vram_mb: 4096,
+            scene_results: vec![SceneResult {
+                scene_id: 0,
+                scene_name: "Waves".to_string(),
+                frames_rendered: 100,
+                elapsed_seconds: 1.6,
+                avg_fps: 62.5,
+                avg_frametime_ms: 16.0,
+                p1_low_frametime_ms: 17.0,
+                score: 16000,
+            }],
+        };
+
+        let report2 = BenchmarkReport {
+            timestamp: "2026-11-04 10:30:00 UTC".to_string(),
+            system_info: report1.system_info.clone(),
+            total_elapsed_seconds: 9.5,
+            total_frames: 600,
+            overall_score: 105_000,
+            peak_gpu_temp_c: 67.0,
+            peak_gpu_hotspot_c: 77.0,
+            peak_gpu_util_pct: 99.0,
+            peak_gpu_power_w: 125.0,
+            peak_gpu_clock_mhz: 2550,
+            peak_vram_mb: 4096,
+            scene_results: vec![SceneResult {
+                scene_id: 0,
+                scene_name: "Waves".to_string(),
+                frames_rendered: 100,
+                elapsed_seconds: 1.5,
+                avg_fps: 66.6,
+                avg_frametime_ms: 15.0,
+                p1_low_frametime_ms: 16.0,
+                score: 17000,
+            }],
+        };
+
+        let temp_dir = std::env::temp_dir();
+        let hist_path = temp_dir.join("test_history.jsonl");
+        let base_path = temp_dir.join("test_baseline.json");
+
+        let hist_str = hist_path.to_str().unwrap();
+        let base_str = base_path.to_str().unwrap();
+
+        // 1. Append to history
+        append_to_history(&report1, hist_str).expect("Append 1 failed");
+        append_to_history(&report2, hist_str).expect("Append 2 failed");
+
+        let history = load_history(hist_str).expect("Load history failed");
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].overall_score, 100_000);
+        assert_eq!(history[1].overall_score, 105_000);
+
+        // 2. Save baseline
+        save_baseline(&report1, base_str).expect("Save baseline failed");
+        let baseline = load_baseline(base_str).expect("Load baseline failed");
+        assert_eq!(baseline.overall_score, 100_000);
+
+        // 3. Compare reports
+        let comparison = compare_reports(&report2, &baseline);
+        assert_eq!(comparison.score_delta_pts, 5_000);
+        assert!((comparison.score_delta_pct - 5.0).abs() < 0.01);
+        assert!((comparison.clock_delta_pct - 2.0).abs() < 0.01);
+        assert!((comparison.temp_delta_c - 2.0).abs() < 0.01);
+        assert_eq!(comparison.scene_comparisons.len(), 1);
+        assert!(!comparison.throttle_detected);
+
+        // 4. Formatting output sanity
+        let comp_table = format_comparison_table(&comparison);
+        assert!(comp_table.contains("DYNO_TERM BENCHMARK PERFORMANCE COMPARISON"));
+        assert!(comp_table.contains("+5.0%"));
+
+        let hist_table = format_history_table(&history, Some(&report1.timestamp));
+        assert!(hist_table.contains("DYNO_TERM BENCHMARK HISTORY"));
+        assert!(hist_table.contains("[BASELINE]"));
+
+        // Cleanup
+        let _ = fs::remove_file(hist_path);
+        let _ = fs::remove_file(base_path);
     }
 }

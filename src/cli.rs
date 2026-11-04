@@ -59,6 +59,22 @@ pub struct Args {
     #[arg(short, long, default_value = "dyno_benchmark_results.json")]
     pub output: String,
 
+    /// Show chronological table of all past benchmark runs and exit
+    #[arg(long)]
+    pub history: bool,
+
+    /// Set reference baseline report from specified file (or default latest report) and exit
+    #[arg(long, num_args = 0..=1, default_missing_value = "dyno_benchmark_results.json")]
+    pub set_baseline: Option<String>,
+
+    /// Path to reference baseline JSON file (default: "dyno_baseline.json")
+    #[arg(long)]
+    pub baseline: Option<String>,
+
+    /// Compare specified report file against reference baseline and exit
+    #[arg(long)]
+    pub compare: Option<String>,
+
     /// Capture raw frame screenshots of all 6 acts to output directory and exit
     #[arg(long)]
     pub capture: Option<String>,

@@ -51,10 +51,15 @@ Aliev-Panfilov 2-variable reaction-diffusion system ($\partial u / \partial t$, 
 
 ---
 
-### Act VI: Kinetic N-Body Supernova (CPU Rayon)
-24,000 gravitational celestial bodies simulated in parallel across all CPU cores/threads via Rayon, with collision dynamics, tidal tail dispersion, and velocity-based relativistic thermal heat gradient coloring.
+### Act VI: Lattice Boltzmann Vortex Street (GPU - CFD Fluid Model)
+Lattice Boltzmann Method (LBM D2Q9) incompressible Navier-Stokes simulation evaluating 9 discrete velocity distribution streams ($c_0 \dots c_8$), BGK collision relaxation, 4-tap central difference vorticity curl ($\omega = \nabla \times \vec{u}$), and bluff body aerodynamic wake shedding forming an unsteady von Kármán Vortex Street.
+
+---
+
+### Act VII: Kinetic N-Body Supernova (CPU Rayon)
+32,000 gravitational celestial bodies simulated in parallel across all CPU cores/threads via Rayon, with collision dynamics, tidal tail dispersion, and velocity-based relativistic thermal heat gradient coloring.
 <p align="center">
-  <img src="assets/screenshots/act6_nbody.png" alt="Act VI: Kinetic N-Body Supernova" width="850" />
+  <img src="assets/screenshots/act6_nbody.png" alt="Act VII: Kinetic N-Body Supernova" width="850" />
 </p>
 
 ---
@@ -159,6 +164,22 @@ Verify CPU physics simulation, WGSL shader compilation, GPU compute passes, tele
 
 # Alias
 ./target/release/dyno_term --self-test
+```
+
+### 6. Historical Runs & Baseline Comparison
+Track performance evolution, compare hardware upgrades, and detect thermal throttling across runs:
+```bash
+# View chronological history table of all past runs
+./target/release/dyno_term --history
+
+# Pin the latest run as reference baseline
+./target/release/dyno_term --set-baseline
+
+# Or pin a specific JSON report as baseline
+./target/release/dyno_term --set-baseline my_golden_run.json
+
+# Compare any report against the active baseline
+./target/release/dyno_term --compare dyno_benchmark_results.json
 ```
 
 ---

@@ -495,13 +495,14 @@ impl Hud {
 }
 
 pub fn get_scene_math_model(scene_id: u32) -> &'static str {
-    match scene_id % 6 {
+    match scene_id % 7 {
         0 => "Clausius-Clapeyron Thermodynamics & Gerstner Wave Spectrum",
         1 => "Power-8 3D Fractal Distance Estimator: z ↦ z⁸ + c",
         2 => "Kerr Spacetime Geodesic Deflection & Doppler Beaming",
         3 => "Navier-Stokes Burgers-Rott Vortex Dynamics",
         4 => "Aliev-Panfilov Reaction-Diffusion Electrophysiology",
-        5 => "Multithreaded 24K Celestial Particle Gravitation",
+        5 => "Lattice Boltzmann D2Q9 & von Kármán Vortex Shedding",
+        6 => "Multithreaded 32K Celestial Particle Gravitation",
         _ => "Computational Benchmark",
     }
 }
@@ -650,7 +651,7 @@ mod tests {
 
     #[test]
     fn test_get_scene_math_models() {
-        for scene_id in 0..=5 {
+        for scene_id in 0..=6 {
             let desc = get_scene_math_model(scene_id);
             assert!(!desc.is_empty(), "Scene {} math model should not be empty", scene_id);
         }

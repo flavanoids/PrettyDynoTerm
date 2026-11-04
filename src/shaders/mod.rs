@@ -763,6 +763,189 @@ fn render_cardiac(uv_x: f32, uv_y: f32) -> vec4<f32> {
 }
 
 // -------------------------------------------------------------
+// SCENE 5: LATTICE BOLTZMANN METHOD (LBM D2Q9) & VON KÁRMÁN VORTEX STREET
+// -------------------------------------------------------------
+
+// Evaluates the hydrodynamic velocity field u = (ux, uy) around cylinder obstacle
+fn lbm_velocity_field(p: vec2<f32>, t: f32) -> vec2<f32> {
+    let u_inflow = 0.85;
+    let cyl_pos = vec2<f32>(-1.15, 0.0);
+    let r_cyl = 0.38;
+
+    let d_cyl = p - cyl_pos;
+    let r_sq = dot(d_cyl, d_cyl);
+    let r = sqrt(max(r_sq, 0.001));
+
+    // Potential flow base field past circular cylinder (Milne-Thomson theorem)
+    let theta = atan2(d_cyl.y, d_cyl.x);
+    let pot_factor = (r_cyl * r_cyl) / max(r_sq, r_cyl * r_cyl * 0.25);
+    var ux = u_inflow * (1.0 - pot_factor * cos(2.0 * theta));
+    var uy = u_inflow * (-pot_factor * sin(2.0 * theta));
+
+    // Downstream von Kármán vortex street shedding (Re ~ 250, St = 0.21)
+    let shed_freq = 2.4;
+    let wake_x = p.x - cyl_pos.x;
+
+    if (wake_x > 0.05) {
+        let wake_envelope = clamp(wake_x / 1.5, 0.0, 1.0) * exp(-wake_x * 0.12);
+        let transverse_sep = 0.26; // Staggered street separation h
+
+        // 6 Staggered vortex cores moving downstream
+        for (var k = 0; k < 6; k = k + 1) {
+            let k_f = f32(k);
+            let sign = select(-1.0, 1.0, (k % 2) == 0);
+            
+            // Advection position along street
+            let vx_pos = cyl_pos.x + 0.45 + (fract((t * 0.75 - k_f * 0.1666)) * 4.8);
+            let vy_pos = sign * transverse_sep;
+            
+            let dv = p - vec2<f32>(vx_pos, vy_pos);
+            let dist_sq = dot(dv, dv);
+            let core_r = 0.22;
+            let gamma = sign * 1.65 * wake_envelope;
+
+            // Biot-Savart vortex kernel
+            let inv_denom = gamma / (6.283185 * (dist_sq + core_r * core_r));
+            ux = ux - dv.y * inv_denom;
+            uy = uy + dv.x * inv_denom;
+        }
+    }
+
+    // Inside obstacle: zero velocity (no-slip / bounce-back condition)
+    if (r < r_cyl) {
+        return vec2<f32>(0.0, 0.0);
+    }
+
+    return vec2<f32>(ux, uy);
+}
+
+// Full D2Q9 Lattice Boltzmann Equilibrium and BGK Collision
+fn evaluate_lbm_d2q9(pos: vec2<f32>, u_vec: vec2<f32>) -> vec4<f32> {
+    let rho = 1.0;
+    let cs2 = 0.33333333; // c_s^2 = 1/3
+    let cs4 = 0.11111111; // c_s^4 = 1/9
+
+    let u_sq = dot(u_vec, u_vec);
+
+    // D2Q9 Discrete velocity vectors: c_0..c_8
+    let c = array<vec2<f32>, 9>(
+        vec2<f32>( 0.0,  0.0), // 0: Rest
+        vec2<f32>( 1.0,  0.0), // 1: +X
+        vec2<f32>( 0.0,  1.0), // 2: +Y
+        vec2<f32>(-1.0,  0.0), // 3: -X
+        vec2<f32>( 0.0, -1.0), // 4: -Y
+        vec2<f32>( 1.0,  1.0), // 5: +X +Y
+        vec2<f32>(-1.0,  1.0), // 6: -X +Y
+        vec2<f32>(-1.0, -1.0), // 7: -X -Y
+        vec2<f32>( 1.0, -1.0)  // 8: +X -Y
+    );
+
+    // Lattice weights
+    let w = array<f32, 9>(
+        0.44444444, // 4/9
+        0.11111111, 0.11111111, 0.11111111, 0.11111111, // 1/9
+        0.02777778, 0.02777778, 0.02777778, 0.02777778  // 1/36
+    );
+
+    let tau = 0.65; // Relaxation time relating to kinematic viscosity nu
+    var sum_feq = 0.0;
+    var collision_dissipation = 0.0;
+
+    // BGK Collision operator across all 9 velocity directions
+    for (var i = 0; i < 9; i = i + 1) {
+        let ci_dot_u = dot(c[i], u_vec);
+        let feq_i = rho * w[i] * (1.0 + (ci_dot_u / cs2) + (ci_dot_u * ci_dot_u) / (2.0 * cs4) - (u_sq / (2.0 * cs2)));
+        sum_feq = sum_feq + feq_i;
+        let omega_i = (feq_i - w[i] * rho) / tau;
+        collision_dissipation = collision_dissipation + abs(omega_i);
+    }
+
+    return vec4<f32>(u_vec.x, u_vec.y, sum_feq, collision_dissipation);
+}
+
+fn render_lbm_vortex(uv_x: f32, uv_y: f32) -> vec4<f32> {
+    let t = u.time * 0.95;
+    let p = vec2<f32>(uv_x, uv_y);
+
+    let cyl_pos = vec2<f32>(-1.15, 0.0);
+    let r_cyl = 0.38;
+    let dist_to_cyl = length(p - cyl_pos);
+
+    // 1. Evaluate velocity field & D2Q9 equilibrium
+    let vel = lbm_velocity_field(p, t);
+    let lbm = evaluate_lbm_d2q9(p, vel);
+    let speed = length(vel);
+    let dissipation = lbm.w;
+
+    // 2. High-precision 4-tap central differences curl: omega = duy/dx - dux/dy
+    let eps = 0.015;
+    let u_xp = lbm_velocity_field(p + vec2<f32>(eps, 0.0), t);
+    let u_xm = lbm_velocity_field(p - vec2<f32>(eps, 0.0), t);
+    let u_yp = lbm_velocity_field(p + vec2<f32>(0.0, eps), t);
+    let u_ym = lbm_velocity_field(p - vec2<f32>(0.0, eps), t);
+
+    let duy_dx = (u_xp.y - u_xm.y) / (2.0 * eps);
+    let dux_dy = (u_yp.x - u_ym.x) / (2.0 * eps);
+    let vorticity = duy_dx - dux_dy;
+
+    // 3. Dynamic pressure deficit: P_dyn = 0.5 * rho * v^2
+    let dyn_pressure = 0.5 * dot(vel, vel);
+
+    // 4. Streamline streaklines
+    let stream_phase = sin(p.y * 36.0 + sin(p.x * 4.0 - t * 4.0) * 1.5);
+    let streakline = smoothstep(0.75, 0.98, stream_phase) * clamp(speed * 0.9, 0.0, 1.0);
+
+    // 5. Channel background: Deep obsidian wind tunnel with grid measurement ticks
+    let grid_x = smoothstep(0.04, 0.0, abs(fract(p.x * 2.0) - 0.5));
+    let grid_y = smoothstep(0.04, 0.0, abs(fract(p.y * 2.0) - 0.5));
+    let grid_intensity = (grid_x + grid_y) * 0.035;
+
+    var col = vec3<f32>(0.03, 0.04, 0.07) + vec3<f32>(grid_intensity);
+
+    // 6. Vorticity color grading:
+    // Positive vorticity (counter-clockwise): Electric Cyan (#00f0ff)
+    // Negative vorticity (clockwise): Vibrant Magenta-Coral (#ff2880)
+    let pos_vort = clamp(vorticity * 0.55, 0.0, 1.0);
+    let neg_vort = clamp(-vorticity * 0.55, 0.0, 1.0);
+
+    let cyan_vort = vec3<f32>(0.0, 0.94, 1.0) * pow(pos_vort, 1.2) * 1.6;
+    let magenta_vort = vec3<f32>(1.0, 0.16, 0.50) * pow(neg_vort, 1.2) * 1.6;
+
+    col = col + cyan_vort + magenta_vort;
+
+    // Kinetic velocity glow along high-shear boundary layers
+    let kinetic_col = vec3<f32>(0.2, 0.5, 1.0) * (speed * 0.45);
+    col = col + kinetic_col;
+
+    // Golden streamline filaments
+    let streak_col = vec3<f32>(1.0, 0.85, 0.35) * streakline * 0.9;
+    col = col + streak_col;
+
+    // Dissipation highlight
+    col = col + vec3<f32>(0.1, 0.25, 0.4) * (dissipation * 0.2);
+
+    // 7. Solid Obstacle Rendering: Dark carbon-composite cylinder with rim illumination
+    if (dist_to_cyl < r_cyl) {
+        let n_obs = normalize(p - cyl_pos);
+        let light_dir = normalize(vec2<f32>(-0.8, 0.6));
+        let diff = max(dot(n_obs, light_dir), 0.0);
+        let rim = pow(1.0 - (dist_to_cyl / r_cyl), 2.5);
+
+        let carbon_base = vec3<f32>(0.06, 0.07, 0.09);
+        let specular = pow(max(dot(n_obs, light_dir), 0.0), 16.0);
+        let cyl_col = carbon_base + vec3<f32>(0.4, 0.5, 0.6) * diff * 0.4 + vec3<f32>(0.0, 0.9, 1.0) * (1.0 - rim) * 0.7 + specular * 0.6;
+        col = cyl_col;
+    } else {
+        // Drop shadow / wake occlusion from cylinder
+        let shadow_dist = length(p - (cyl_pos + vec2<f32>(0.15, 0.0)));
+        let shadow = smoothstep(r_cyl * 0.95, r_cyl * 1.4, shadow_dist);
+        col = col * (0.45 + 0.55 * shadow);
+    }
+
+    return vec4<f32>(col, 1.0);
+}
+
+// -------------------------------------------------------------
 // MAIN COMPUTE DISPATCH
 // -------------------------------------------------------------
 
@@ -795,8 +978,10 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         pixel_color = render_blackhole(ro, rd);
     } else if (u.scene_id == 3u) {
         pixel_color = render_tornado(ro, rd);
-    } else {
+    } else if (u.scene_id == 4u) {
         pixel_color = render_cardiac(uv_x, uv_y);
+    } else {
+        pixel_color = render_lbm_vortex(uv_x, uv_y);
     }
 
     let pixel_idx = y * u.width + x;
@@ -848,6 +1033,7 @@ mod tests {
         assert!(UNIFIED_SHADER.contains("render_blackhole"));
         assert!(UNIFIED_SHADER.contains("render_tornado"));
         assert!(UNIFIED_SHADER.contains("render_cardiac"));
+        assert!(UNIFIED_SHADER.contains("render_lbm_vortex"));
     }
 
     #[test]

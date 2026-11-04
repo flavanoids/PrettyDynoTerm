@@ -116,7 +116,35 @@ A beating human left ventricle afflicted with ventricular tachycardia / fibrilla
 
 ---
 
-## Act VI: "Kinetic Supernova" (CPU Multi-Threaded Physics)
+## Act VI: "Lattice Boltzmann Vortex Street" (GPU Compute Shader - CFD Model)
+*Hardware Target: Incompressible Navier-Stokes Kinetics, D2Q9 Velocity Streaming, BGK Collision Relaxation & Vorticity Curl*
+
+### Visual Concept
+An aerodynamic flow channel inside an aerospace wind tunnel observing a circular bluff body obstacle shedding a periodic, staggered **von Kármán Vortex Street**. Alternating electric cyan (counter-clockwise) and fluorescent magenta (clockwise) swirling vortex cores drift downstream amidst golden streamline filaments and dark carbon-composite chamber boundary layers.
+
+### Mathematical Formulation
+1. **D2Q9 Velocity Lattice & Equilibrium Distribution**:
+   The fluid velocity distribution is modeled across 9 discrete lattice velocities $\vec{c}_0 \dots \vec{c}_8$:
+   $$f_i^{\text{eq}}(\rho, \vec{u}) = \rho w_i \left[ 1 + \frac{\vec{c}_i \cdot \vec{u}}{c_s^2} + \frac{(\vec{c}_i \cdot \vec{u})^2}{2 c_s^4} - \frac{\vec{u} \cdot \vec{u}}{2 c_s^2} \right]$$
+   where $c_s^2 = 1/3$ is the lattice speed of sound, with weights $w_0 = 4/9$, $w_{1..4} = 1/9$, and $w_{5..8} = 1/36$.
+
+2. **BGK Collision & Viscous Dissipation**:
+   The Bhatnagar-Gross-Krook (BGK) collision operator computes local momentum relaxation towards equilibrium across all 9 directions:
+   $$\Omega_i = -\frac{1}{\tau} \left(f_i - f_i^{\text{eq}}\right)$$
+   where relaxation time $\tau = 0.65$ dictates the kinematic fluid viscosity $\nu = c_s^2 (\tau - 0.5)$.
+
+3. **von Kármán Vortex Street Shedding ($Re \sim 250, St = 0.21$)**:
+   Downstream wake instability produces periodic vortex shedding at Strouhal frequency $\omega_s$:
+   $$\vec{u}_{\text{vortex}} = \sum_{k=1}^{6} \frac{\Gamma_k}{2\pi} \frac{(-(y - y_k), x - x_k)}{(x - x_k)^2 + (y - y_k)^2 + r_{\text{core}}^2}$$
+   where staggered alternating circulation $\Gamma_k = (-1)^k \Gamma_0$ induces self-sustaining boundary layer separation.
+
+4. **4-Tap Symmetric Central Differences Vorticity**:
+   High-precision curl operator $\omega = \nabla \times \vec{u}$ isolates localized fluid rotation:
+   $$\omega = \frac{u_y(x+\epsilon, y) - u_y(x-\epsilon, y)}{2\epsilon} - \frac{u_x(x, y+\epsilon) - u_x(x, y-\epsilon)}{2\epsilon}$$
+
+---
+
+## Act VII: "Kinetic Supernova" (CPU Multi-Threaded Physics)
 *Hardware Target: CPU Multi-Core IPC, SIMD Vectorization & Cache Coherency*
 
 ### Concept & Formulation

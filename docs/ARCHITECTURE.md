@@ -23,7 +23,7 @@ Traditional PC benchmarks (such as 3DMark or Cinebench) require heavy GUI runtim
 │                                                             │
 │   [ Canonical Resolution: 16K (15360x8640) / 4K / 1080p ]   │
 │                              │                              │
-│      WGSL Compute Shader (Acts I-III) or Rayon (Act IV)      │
+│      WGSL Compute Shader (Acts I-VI) or Rayon (Act VII)     │
 │                              │                              │
 │                    GPU Storage Buffer                       │
 └──────────────────────────────┬──────────────────────────────┘
@@ -79,12 +79,12 @@ To guarantee hardware stability and deterministic benchmark scoring across diver
    - Executes across 6 core subsystems:
      - **CPU Physics**: Validates 2,048-particle dual-spiral galaxy initialization, Rayon multi-threaded force integration (0 NaNs/Infs), and preview rasterization.
      - **WGSL Shaders**: Validates `UNIFIED_SHADER` and `DOWNSAMPLE_SHADER` syntax, workgroup boundaries, and std140 uniform buffer struct alignments (48-byte layout, 16-byte alignment).
-     - **GPU Compute Pipeline**: Tests adapter selection, pipeline instantiation, compute dispatches across all 5 GPU acts, and VRAM downsampling readback.
+     - **GPU Compute Pipeline**: Tests adapter selection, pipeline instantiation, compute dispatches across all 6 GPU acts, and VRAM downsampling readback.
      - **Telemetry Sensors**: Tests CPU thread discovery, `/proc/stat` delta calculations, and GPU sysfs hwmon probes.
      - **Benchmark Math & Scorer**: Tests frametime accumulation, 1% low calculations, arithmetic scene weighting, and JSON report round-tripping.
      - **Terminal Engine**: Tests resolution tags, ANSI sequence stripping, and half-block TrueColor rasterizer initialization.
 2. **Automated Developer Test Harness (`cargo test`)**:
-   - 33 automated unit and integration tests covering unit logic (`src/lib.rs`), CLI parsing (`tests/cli_tests.rs`), and GPU context execution (`tests/pipeline_integration.rs`).
+   - 35 automated unit and integration tests covering unit logic (`src/lib.rs`), CLI parsing (`tests/cli_tests.rs`), and GPU context execution (`tests/pipeline_integration.rs`).
    - Run in one step via `./scripts/run_tests.sh`.
 
 See [docs/TESTING.md](TESTING.md) for full testing documentation.

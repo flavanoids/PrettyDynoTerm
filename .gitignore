@@ -1,4 +1,6 @@
 /target
 dyno_benchmark_results*.json
+dyno_benchmark_history*.jsonl
+dyno_baseline*.json
 *.log
 .DS_Store
