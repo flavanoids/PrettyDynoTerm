@@ -340,10 +340,12 @@ fn run_interactive_demo(
         "RELATIVISTIC BLACK HOLE (GPU)",
         "TORNADIC MESOCYCLONE (GPU)",
         "CARDIAC ELECTROPHYSIOLOGY (GPU)",
+        "LATTICE BOLTZMANN VORTEX (GPU)",
+        "CYBERNETIC GAIT KINEMATICS (GPU)",
         "KINETIC N-BODY SUPERNOVA (CPU)",
     ];
 
-    let mut scene_id = initial_scene % 6;
+    let mut scene_id = initial_scene % 8;
     let mut uncapped = initial_uncapped;
     let mut hud = Hud::new(term_width, scene_names[scene_id as usize].to_string());
     hud.resolution_label = res_tag.to_string();
@@ -371,7 +373,7 @@ fn run_interactive_demo(
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => break,
                     KeyCode::Char(' ') => {
-                        scene_id = (scene_id + 1) % 7;
+                        scene_id = (scene_id + 1) % 8;
                         hud.scene_title = scene_names[scene_id as usize].to_string();
                         hud.math_model = get_scene_math_model(scene_id).to_string();
                     }
@@ -418,7 +420,7 @@ fn run_interactive_demo(
         // In uncapped mode, pace terminal stdout redraw to ~60 FPS (16ms) so stdout bandwidth doesn't bottleneck GPU
         let should_draw_terminal = !uncapped || last_terminal_draw.elapsed() >= Duration::from_millis(16);
 
-        if scene_id < 6 {
+        if scene_id < 7 {
             let uniforms = gpu::pipeline::Uniforms {
                 time: elapsed,
                 frame: frame_count,
@@ -506,6 +508,7 @@ fn execute_benchmark_pass(
         "TORNADIC MESOCYCLONE (GPU)",
         "CARDIAC ELECTROPHYSIOLOGY (GPU)",
         "LATTICE BOLTZMANN VORTEX (GPU)",
+        "CYBERNETIC GAIT KINEMATICS (GPU)",
         "KINETIC N-BODY SUPERNOVA (CPU)",
     ];
 
@@ -513,20 +516,20 @@ fn execute_benchmark_pass(
     let mut scene_results = Vec::new();
     let total_benchmark_start = Instant::now();
     let compute_pixels = (pipeline.width * pipeline.height) as u64;
-    let total_bench_frames = (frames_per_scene * 7).max(1);
+    let total_bench_frames = (frames_per_scene * 8).max(1);
     let mut total_frames_completed: u32 = 0;
     let mut cumulative_score: f64 = 0.0;
 
     let mut term_preview_buf = vec![0u8; term_width * term_height * 4];
     let mut nbody = NBodySimulation::new(32_000, pipeline.width as usize, pipeline.height as usize);
 
-    for scene_id in 0..7u32 {
+    for scene_id in 0..8u32 {
         let mut hud = Hud::new(term_width, scene_names[scene_id as usize].to_string());
         hud.resolution_label = res_tag.to_string();
         hud.math_model = get_scene_math_model(scene_id).to_string();
         hud.is_benchmark = true;
         hud.act_index = (scene_id + 1) as usize;
-        hud.act_total = 7;
+        hud.act_total = 8;
         hud.iteration_info = iteration_info;
         hud.current_score = cumulative_score;
 
@@ -557,7 +560,7 @@ fn execute_benchmark_pass(
             let should_draw_terminal = last_terminal_draw.elapsed() >= Duration::from_millis(16)
                 || frame_idx == frames_per_scene - 1;
 
-            if scene_id < 6 {
+            if scene_id < 7 {
                 // GPU Compute Scenes (Full 16K Uncapped Stress)
                 let uniforms = gpu::pipeline::Uniforms {
                     time: elapsed,
@@ -671,7 +674,7 @@ fn execute_benchmark_pass(
             cpu_threads: stats.cpu_threads,
         },
         total_elapsed_seconds: total_elapsed,
-        total_frames: frames_per_scene * 7,
+        total_frames: frames_per_scene * 8,
         overall_score: total_score,
         peak_gpu_temp_c: scorer.peak_temp,
         peak_gpu_hotspot_c: scorer.peak_hotspot,
@@ -1023,12 +1026,13 @@ fn capture_screenshots(
         "act4_tornado",
         "act5_cardiac",
         "act6_lbm_vortex",
-        "act7_nbody",
+        "act7_kinematics",
+        "act8_nbody",
     ];
 
-    for scene_id in 0..7u32 {
-        println!("Rendering Act {}/7...", scene_id + 1);
-        if scene_id < 6 {
+    for scene_id in 0..8u32 {
+        println!("Rendering Act {}/8...", scene_id + 1);
+        if scene_id < 7 {
             for frame in 0..40 {
                 let uniforms = gpu::pipeline::Uniforms {
                     time: 3.5,
@@ -1054,7 +1058,7 @@ fn capture_screenshots(
         save_ppm(&ppm_path, capture_w, capture_h, &buf)?;
     }
 
-    println!("All 7 scenes captured successfully to {}", out_dir);
+    println!("All 8 scenes captured successfully to {}", out_dir);
     Ok(())
 }
 

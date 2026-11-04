@@ -43,7 +43,7 @@ pub struct Args {
     #[arg(long, default_value = "4k")]
     pub res: String,
 
-    /// Specific scene to display in demo mode (0: Waves, 1: Mandelbulb, 2: Black Hole, 3: Tornado, 4: Cardiac, 5: CPU N-Body)
+    /// Specific scene to display in demo mode (0: Waves, 1: Mandelbulb, 2: Black Hole, 3: Tornado, 4: Cardiac, 5: LBM Vortex, 6: Kinematics, 7: CPU N-Body)
     #[arg(short, long, default_value_t = 0)]
     pub scene: u32,
 

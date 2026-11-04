@@ -49,13 +49,14 @@ $$\text{Raw Workload} = \left( N_{\text{frames}} \times \text{Pixels}_{\text{fra
 | **Act IV** | Tornadic Mesocyclone | Severe Meteorology | $1.2\times$ (Burgers-Rott vortex + cyclostrophic pressure deficit) |
 | **Act V** | Cardiac Electrophysiology | Biophysics / Medicine | $1.3\times$ (Aliev-Panfilov reaction-diffusion PDE + rotors) |
 | **Act VI** | Lattice Boltzmann Flow | Computational Fluid Dynamics | $1.5\times$ (D2Q9 BGK collision relaxation + von Kármán street) |
-| **Act VII** | Kinetic Supernova | Celestial Gravitation | $1.0\times$ (32,000 $N$-Body particle gravitational forces) |
+| **Act VII** | Cybernetic Gait Kinematics | 3D Character Animation | $1.4\times$ (Hierarchical forward kinematics + smin skinning + mirror reflection) |
+| **Act VIII** | Kinetic Supernova | Celestial Gravitation | $1.0\times$ (32,000 $N$-Body particle gravitational forces) |
 
 The final score is computed as throughput normalized to completion time using a standardized divisor ($20,000,000$ operations/sec = $1.00\text{ pt}$):
 
 $$\text{Score}_{\text{scene}} = \frac{\text{Raw Workload}}{\text{Elapsed Time (seconds)} \times 20,000,000}$$
 
-$$\text{Dyno Benchmark Score} = \sum_{i=1}^{7} \text{Score}_{\text{scene } i}$$
+$$\text{Dyno Benchmark Score} = \sum_{i=1}^{8} \text{Score}_{\text{scene } i}$$
 
 ### Score Scaling & Calibration
 Scores are formatted to two decimal places (`f64`, e.g. `898.66 pts`) to provide an intuitive, memorable decimal scale:

@@ -203,7 +203,8 @@ impl BenchmarkScorer {
             3 => 1.2, // Tornado
             4 => 1.3, // Cardiac
             5 => 1.5, // Lattice Boltzmann CFD
-            6 => 1.0, // CPU N-Body
+            6 => 1.4, // Cybernetic Gait Kinematics
+            7 => 1.0, // CPU N-Body
             _ => 1.0,
         };
         let raw_workload = (count * pixels_per_frame as f64) * weight;
@@ -253,7 +254,8 @@ impl BenchmarkScorer {
             3 => 1.2, // Tornado: Burgers-Rott mesocyclone
             4 => 1.3, // Cardiac: Aliev-Panfilov electrophysiology
             5 => 1.5, // Lattice Boltzmann CFD: D2Q9 BGK vortex shedding
-            6 => 1.0, // CPU N-Body gravitation
+            6 => 1.4, // Cybernetic Gait Kinematics: forward kinematics & smin skinning
+            7 => 1.0, // CPU N-Body gravitation
             _ => 1.0,
         };
 

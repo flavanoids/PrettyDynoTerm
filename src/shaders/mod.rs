@@ -946,6 +946,288 @@ fn render_lbm_vortex(uv_x: f32, uv_y: f32) -> vec4<f32> {
 }
 
 // -------------------------------------------------------------
+// SCENE 6: 3D CYBERNETIC KINEMATICS & SKELETAL GAIT ANIMATION
+// -------------------------------------------------------------
+
+fn sd_capsule_kin(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>, r: f32) -> f32 {
+    let pa = p - a;
+    let ba = b - a;
+    let h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * h) - r;
+}
+
+fn smin_kin(a: f32, b: f32, k: f32) -> f32 {
+    let h = max(k - abs(a - b), 0.0) / k;
+    return min(a, b) - h * h * k * 0.25;
+}
+
+// Evaluates character Signed Distance Field and returns vec4(distance, mat_id, glow_id, sss)
+// mat_id: 1.0 = Carbon Armor Plating, 2.0 = Chrome Joint Servos, 3.0 = Cyan Energy Visor/Conduit, 4.0 = Amber Core
+fn character_sdf(pos: vec3<f32>, t: f32) -> vec4<f32> {
+    let omega = 3.2;
+    let phi_L = t * omega;
+    let phi_R = phi_L + 3.14159265;
+
+    // Center-of-mass vertical bounce and lateral pelvic sway
+    let y_pelvis = 1.08 + 0.045 * cos(2.0 * phi_L);
+    let x_pelvis = 0.05 * sin(phi_L);
+    let pelvis = vec3<f32>(x_pelvis, y_pelvis, 0.0);
+
+    // Torso / Spine forward tilt
+    let chest = pelvis + vec3<f32>(-x_pelvis * 0.4, 0.42, 0.04);
+    let neck = chest + vec3<f32>(0.0, 0.16, 0.02);
+    let head = neck + vec3<f32>(0.0, 0.18, 0.04);
+
+    // 1. Torso & Head
+    let d_pelvis_capsule = sd_capsule_kin(pos, pelvis - vec3<f32>(0.14, 0.0, 0.0), pelvis + vec3<f32>(0.14, 0.0, 0.0), 0.12);
+    let d_torso = sd_capsule_kin(pos, pelvis, chest, 0.15);
+    let d_chest_plate = sd_capsule_kin(pos, chest - vec3<f32>(0.18, 0.0, -0.02), chest + vec3<f32>(0.18, 0.0, -0.02), 0.14);
+    let d_head = length(pos - head) - 0.13;
+    let d_visor = sd_capsule_kin(pos, head + vec3<f32>(-0.09, 0.01, 0.09), head + vec3<f32>(0.09, 0.01, 0.09), 0.035);
+
+    var d_body = smin_kin(d_pelvis_capsule, d_torso, 0.08);
+    d_body = smin_kin(d_body, d_chest_plate, 0.09);
+    d_body = smin_kin(d_body, d_head, 0.08);
+
+    var d_glow = d_visor;
+    var d_chrome = 1e6;
+
+    // Arc reactor core in chest
+    let core_pos = chest + vec3<f32>(0.0, 0.02, 0.12);
+    let d_core = length(pos - core_pos) - 0.045;
+    d_glow = min(d_glow, d_core);
+
+    // 2. Dual Bipedal Legs (Hierarchical Forward Kinematics)
+    for (var leg = 0; leg < 2; leg = leg + 1) {
+        let sign = select(-1.0, 1.0, leg == 0);
+        let phi = select(phi_R, phi_L, leg == 0);
+
+        let hip = pelvis + vec3<f32>(sign * 0.18, -0.04, 0.0);
+        let th_hip = 0.48 * sin(phi);
+        let th_knee = max(0.0, -0.68 * sin(phi)) + 0.12;
+        let th_ankle = -0.32 * cos(phi);
+
+        let thigh_len = 0.44;
+        let calf_len = 0.42;
+
+        let knee = hip + vec3<f32>(0.0, -thigh_len * cos(th_hip), thigh_len * sin(th_hip));
+        let ankle = knee + vec3<f32>(0.0, -calf_len * cos(th_hip - th_knee), calf_len * sin(th_hip - th_knee));
+        let toe = ankle + vec3<f32>(0.0, 0.01 * sin(th_ankle), 0.16 * cos(th_ankle));
+
+        // Muscle bulge contraction with knee flex
+        let thigh_r = 0.095 + 0.015 * (th_knee / 0.8);
+        let calf_r = 0.080 + 0.012 * (th_knee / 0.8);
+
+        let d_thigh = sd_capsule_kin(pos, hip, knee, thigh_r);
+        let d_knee_servo = length(pos - knee) - 0.082;
+        let d_calf = sd_capsule_kin(pos, knee, ankle, calf_r);
+        let d_ankle_servo = length(pos - ankle) - 0.065;
+        let d_foot = sd_capsule_kin(pos, ankle, toe, 0.058);
+
+        d_body = smin_kin(d_body, d_thigh, 0.08);
+        d_body = smin_kin(d_body, d_calf, 0.06);
+        d_body = smin_kin(d_body, d_foot, 0.04);
+
+        d_chrome = min(d_chrome, min(d_knee_servo, d_ankle_servo));
+    }
+
+    // 3. Dual Arms (Inverted Pendulum Counter-Swing)
+    for (var arm = 0; arm < 2; arm = arm + 1) {
+        let sign = select(-1.0, 1.0, arm == 0);
+        let phi = select(phi_R, phi_L, arm == 0);
+
+        let shoulder = chest + vec3<f32>(sign * 0.28, 0.02, 0.0);
+        let th_shoulder = -0.42 * sin(phi); // Opposite to same-side leg
+        let th_elbow = 0.38 + 0.28 * max(0.0, sin(phi));
+
+        let upper_len = 0.34;
+        let fore_len = 0.32;
+
+        let elbow = shoulder + vec3<f32>(sign * 0.04, -upper_len * cos(th_shoulder), upper_len * sin(th_shoulder));
+        let wrist = elbow + vec3<f32>(0.0, -fore_len * cos(th_shoulder + th_elbow), fore_len * sin(th_shoulder + th_elbow));
+        let hand = wrist + vec3<f32>(0.0, -0.08 * cos(th_shoulder + th_elbow), 0.08 * sin(th_shoulder + th_elbow));
+
+        let d_upper = sd_capsule_kin(pos, shoulder, elbow, 0.068);
+        let d_elbow_servo = length(pos - elbow) - 0.065;
+        let d_forearm = sd_capsule_kin(pos, elbow, wrist, 0.058);
+        let d_hand = sd_capsule_kin(pos, wrist, hand, 0.048);
+
+        d_body = smin_kin(d_body, d_upper, 0.06);
+        d_body = smin_kin(d_body, d_forearm, 0.05);
+        d_body = smin_kin(d_body, d_hand, 0.03);
+
+        d_chrome = min(d_chrome, d_elbow_servo);
+    }
+
+    // Material identification
+    var min_d = d_body;
+    var mat_id = 1.0; // Carbon armor
+    if (d_chrome < min_d) {
+        min_d = d_chrome;
+        mat_id = 2.0; // Chrome joints
+    }
+    if (d_glow < min_d) {
+        min_d = d_glow;
+        mat_id = 3.0; // Glowing conduit/core
+    }
+
+    return vec4<f32>(min_d, mat_id, d_glow, d_core);
+}
+
+// High-precision normal for character
+fn character_normal(p: vec3<f32>, t: f32) -> vec3<f32> {
+    let eps = 0.002;
+    let d = character_sdf(p, t).x;
+    let nx = character_sdf(p + vec3<f32>(eps, 0.0, 0.0), t).x - d;
+    let ny = character_sdf(p + vec3<f32>(0.0, eps, 0.0), t).x - d;
+    let nz = character_sdf(p + vec3<f32>(0.0, 0.0, eps), t).x - d;
+    return normalize(vec3<f32>(nx, ny, nz));
+}
+
+// 8-Tap Ambient Occlusion
+fn character_ao(p: vec3<f32>, n: vec3<f32>, t: f32) -> f32 {
+    var occ = 0.0;
+    var sca = 1.0;
+    for (var i = 1; i <= 8; i = i + 1) {
+        let hr = 0.015 * f32(i);
+        let aopos = p + n * hr;
+        let dd = character_sdf(aopos, t).x;
+        occ = occ + (hr - dd) * sca;
+        sca = sca * 0.75;
+    }
+    return clamp(1.0 - 2.8 * occ, 0.0, 1.0);
+}
+
+fn render_kinematics(uv_x: f32, uv_y: f32) -> vec4<f32> {
+    let t = u.time;
+
+    // Cinematic tracking orbital camera around the walking android
+    let t_cam = t * 0.22;
+    let cam_r = 3.1;
+    let cam_h = 1.25 + 0.35 * cos(t_cam * 0.7);
+    let cam_pos = vec3<f32>(sin(t_cam) * cam_r, cam_h, -cos(t_cam) * cam_r);
+    let cam_target = vec3<f32>(0.0, 0.90, 0.0);
+
+    let fwd = normalize(cam_target - cam_pos);
+    let right = normalize(cross(fwd, vec3<f32>(0.0, 1.0, 0.0)));
+    let up = cross(right, fwd);
+    let fov = 1.45;
+    let rd = normalize(fwd * fov + right * uv_x + up * uv_y);
+    let ro = cam_pos;
+
+    // Lighting setup
+    let light_dir1 = normalize(vec3<f32>(1.5, 2.8, -1.8));
+    let light_dir2 = normalize(vec3<f32>(-2.0, 1.5, 2.0));
+
+    // Dark cyberpunk laboratory background with glowing neon pillars
+    let pillar_phase = sin(atan2(rd.z, rd.x) * 8.0);
+    let pillar_glow = pow(max(pillar_phase, 0.0), 32.0) * vec3<f32>(0.0, 0.85, 1.0) * 0.7;
+    let horizon_glow = exp(-abs(rd.y) * 8.0) * vec3<f32>(0.02, 0.05, 0.12);
+    var col = vec3<f32>(0.012, 0.015, 0.025) + pillar_glow + horizon_glow;
+
+    // Raymarching character & ground
+    var t_ray = 0.05;
+    var t_max = 14.0;
+    var hit_char = false;
+    var hit_floor = false;
+    var p_hit = vec3<f32>(0.0);
+    var hit_mat = vec4<f32>(0.0);
+
+    for (var step = 0; step < 96; step = step + 1) {
+        let p = ro + rd * t_ray;
+
+        // Ground plane test at y = 0
+        if (p.y < 0.001 && rd.y < 0.0) {
+            let t_floor = (0.0 - ro.y) / rd.y;
+            if (t_floor > 0.0 && t_floor < t_ray + 0.1) {
+                hit_floor = true;
+                p_hit = ro + rd * t_floor;
+                break;
+            }
+        }
+
+        let res = character_sdf(p, t);
+        if (res.x < 0.0025) {
+            hit_char = true;
+            p_hit = p;
+            hit_mat = res;
+            break;
+        }
+
+        t_ray = t_ray + max(res.x * 0.55, 0.004);
+        if (t_ray > t_max) { break; }
+    }
+
+    // Shading Character
+    if (hit_char) {
+        let n = character_normal(p_hit, t);
+        let diff1 = max(dot(n, light_dir1), 0.0);
+        let diff2 = max(dot(n, light_dir2), 0.0);
+        let ao = character_ao(p_hit, n, t);
+        let rim = pow(1.0 - max(dot(-rd, n), 0.0), 3.0);
+        let ref_dir = reflect(rd, n);
+        let spec = pow(max(dot(ref_dir, light_dir1), 0.0), 32.0);
+
+        let carbon_color = vec3<f32>(0.08, 0.09, 0.12);
+        let chrome_color = vec3<f32>(0.75, 0.82, 0.90);
+        let cyan_glow = vec3<f32>(0.0, 1.0, 0.88);
+        let amber_core = vec3<f32>(1.0, 0.55, 0.08);
+
+        if (hit_mat.y > 2.5) {
+            // Glowing Visor / Core Conduit
+            let emit = select(cyan_glow * 2.5, amber_core * 3.0, hit_mat.w < 0.02);
+            col = emit;
+        } else if (hit_mat.y > 1.5) {
+            // Chrome joint servos
+            let lit = chrome_color * (diff1 * 0.8 + diff2 * 0.3 + 0.15) * ao + vec3<f32>(spec * 1.2);
+            col = lit + cyan_glow * rim * 0.4;
+        } else {
+            // Dark carbon fiber armor plating
+            let armor = carbon_color * (diff1 * 0.75 + diff2 * 0.25 + 0.12) * ao + vec3<f32>(spec * 0.35);
+            col = armor + cyan_glow * rim * 0.65;
+        }
+    } else if (hit_floor) {
+        // Reflective Obsidian Cyber Floor with Holographic Hex/Grid Pattern
+        let floor_p = p_hit;
+        let grid_size = 0.5;
+        let grid_lines = smoothstep(0.03, 0.0, abs(fract(floor_p.x / grid_size) - 0.5)) +
+                         smoothstep(0.03, 0.0, abs(fract(floor_p.z / grid_size) - 0.5));
+        let grid_color = vec3<f32>(0.0, 0.85, 1.0) * grid_lines * 0.45;
+
+        // Radial ground pulses under walking feet
+        let foot_dist_l = length(floor_p.xz - vec2<f32>(0.18, 0.0));
+        let foot_dist_r = length(floor_p.xz - vec2<f32>(-0.18, 0.0));
+        let ground_pulse = (exp(-foot_dist_l * 2.5) + exp(-foot_dist_r * 2.5)) * vec3<f32>(0.0, 1.0, 0.8) * 0.6;
+
+        let floor_base = vec3<f32>(0.015, 0.02, 0.03) + grid_color + ground_pulse;
+
+        // Planar Raymarching Reflection of the character
+        let refl_rd = reflect(rd, vec3<f32>(0.0, 1.0, 0.0));
+        var refl_t = 0.08;
+        var refl_col = col;
+
+        for (var rs = 0; rs < 48; rs = rs + 1) {
+            let rp = floor_p + refl_rd * refl_t;
+            let res = character_sdf(rp, t);
+            if (res.x < 0.005) {
+                let rn = character_normal(rp, t);
+                let r_diff = max(dot(rn, light_dir1), 0.0);
+                let r_mat = select(vec3<f32>(0.12, 0.14, 0.18), vec3<f32>(0.0, 1.0, 0.85) * 2.0, res.y > 2.5);
+                refl_col = r_mat * (r_diff * 0.8 + 0.2);
+                break;
+            }
+            refl_t = refl_t + max(res.x * 0.65, 0.008);
+            if (refl_t > 8.0) { break; }
+        }
+
+        let fresnel = pow(1.0 - max(dot(-rd, vec3<f32>(0.0, 1.0, 0.0)), 0.0), 3.0);
+        col = mix(floor_base, refl_col, fresnel * 0.72 + 0.18);
+    }
+
+    return vec4<f32>(col, 1.0);
+}
+
+// -------------------------------------------------------------
 // MAIN COMPUTE DISPATCH
 // -------------------------------------------------------------
 
@@ -980,8 +1262,10 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         pixel_color = render_tornado(ro, rd);
     } else if (u.scene_id == 4u) {
         pixel_color = render_cardiac(uv_x, uv_y);
-    } else {
+    } else if (u.scene_id == 5u) {
         pixel_color = render_lbm_vortex(uv_x, uv_y);
+    } else {
+        pixel_color = render_kinematics(uv_x, uv_y);
     }
 
     let pixel_idx = y * u.width + x;
@@ -1034,6 +1318,7 @@ mod tests {
         assert!(UNIFIED_SHADER.contains("render_tornado"));
         assert!(UNIFIED_SHADER.contains("render_cardiac"));
         assert!(UNIFIED_SHADER.contains("render_lbm_vortex"));
+        assert!(UNIFIED_SHADER.contains("render_kinematics"));
     }
 
     #[test]

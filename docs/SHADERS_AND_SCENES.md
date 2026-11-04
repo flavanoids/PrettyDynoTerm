@@ -20,9 +20,10 @@ This document provides an exhaustive technical reference for every scene: the ma
 5. [Act IV: Tornadic Mesocyclone (GPU — Weather Model)](#act-iv-tornadic-mesocyclone-gpu--weather-model)
 6. [Act V: Cardiac Electrophysiology (GPU — Medical Model)](#act-v-cardiac-electrophysiology-gpu--medical-model)
 7. [Act VI: Lattice Boltzmann Vortex Street (GPU — CFD Model)](#act-vi-lattice-boltzmann-vortex-street-gpu--cfd-model)
-8. [Act VII: Kinetic Supernova (CPU Multi-Threaded Physics)](#act-vii-kinetic-supernova-cpu-multi-threaded-physics)
-9. [Cross-Scene Hardware Stress Matrix & Diagnostics](#9-cross-scene-hardware-stress-matrix--diagnostics)
-10. [Automation Scripts & Verification Pipeline](#10-automation-scripts--verification-pipeline)
+8. [Act VII: Cybernetic Gait Kinematics (GPU — 3D Animation)](#act-vii-cybernetic-gait-kinematics-gpu--3d-animation)
+9. [Act VIII: Kinetic Supernova (CPU Multi-Threaded Physics)](#act-viii-kinetic-supernova-cpu-multi-threaded-physics)
+10. [Cross-Scene Hardware Stress Matrix & Diagnostics](#10-cross-scene-hardware-stress-matrix--diagnostics)
+11. [Automation Scripts & Verification Pipeline](#11-automation-scripts--verification-pipeline)
 
 ---
 
@@ -500,12 +501,83 @@ $$\omega \approx \frac{u_y(x+\epsilon, y) - u_y(x-\epsilon, y)}{2\epsilon} - \fr
 
 ---
 
-## Act VII: Kinetic Supernova (CPU Multi-Threaded Physics)
+## Act VII: Cybernetic Gait Kinematics (GPU — 3D Animation)
+
+*Hardware Focus: Hierarchical Forward Kinematics, Smooth Polynomial Skinning (smin), Matrix Frame Rotations & Planar Raymarching Reflections*
+
+<p align="center">
+  <img src="../assets/screenshots/act7_kinematics.png" alt="Act VII: Cybernetic Gait Kinematics" width="850" />
+</p>
+
+### 1. Visual Concept & Art Direction
+A sleek cybernetic android walking across a polished obsidian laboratory floor in an endless, rhythmic bipedal locomotion cycle. An orbiting tracking camera glides smoothly around the subject, capturing all dynamic angles. Joint servos glow with metallic chrome reflections, the chest houses a pulsing arc reactor, and a horizontal visor shines with laser-cyan emission. Below, the glossy mirror floor reflects the entire animated character with real-time planar raymarching reflections and holographic hex-grid pulses beneath each ground step.
+
+### 2. Mathematical Formulation & Arithmetic
+
+#### Hierarchical Forward Kinematics (FK)
+The character's body consists of a 16-segment kinematic chain organized hierarchically from the root pelvis:
+$$M_{\text{bone}} = M_{\text{parent}} \cdot T(\vec{d}) \cdot R_x(\theta_x) \cdot R_y(\theta_y) \cdot R_z(\theta_z)$$
+
+1. **Center of Mass (COM) Gait Inverted-Pendulum Oscillations**:
+   - Vertical bounce (double-frequency harmonic):
+     $$y_{\text{pelvis}}(t) = 1.08 + 0.045 \cos(2\omega t)$$
+   - Lateral pelvic sway (shifting weight to supporting leg):
+     $$x_{\text{pelvis}}(t) = 0.05 \sin(\omega t)$$
+   - Forward spine tilt: $\vec{p}_{\text{chest}} = \vec{p}_{\text{pelvis}} + (-0.4 x_{\text{pelvis}}, 0.42, 0.04)$.
+
+2. **Leg Kinematics (Hip $\to$ Knee $\to$ Ankle $\to$ Toe)**:
+   For left leg ($\phi_L = \omega t$) and right leg ($\phi_R = \phi_L + \pi$):
+   - **Hip Pitch**: $\theta_{\text{hip}}(\phi) = 0.48 \sin(\phi)$
+   - **Knee Flexion** (constrained single-axis hinge):
+     $$\theta_{\text{knee}}(\phi) = \max(0.0, -0.68 \sin\phi) + 0.12$$
+   - **Ankle Articulation**: $\theta_{\text{ankle}}(\phi) = -0.32 \cos\phi$
+   - **Joint Positions**:
+     $$\vec{p}_{\text{knee}} = \vec{p}_{\text{hip}} + \begin{pmatrix} 0 \\ -L_{\text{thigh}} \cos\theta_{\text{hip}} \\ L_{\text{thigh}} \sin\theta_{\text{hip}} \end{pmatrix}, \quad L_{\text{thigh}} = 0.44$$
+     $$\vec{p}_{\text{ankle}} = \vec{p}_{\text{knee}} + \begin{pmatrix} 0 \\ -L_{\text{calf}} \cos(\theta_{\text{hip}} - \theta_{\text{knee}}) \\ L_{\text{calf}} \sin(\theta_{\text{hip}} - \theta_{\text{knee}}) \end{pmatrix}, \quad L_{\text{calf}} = 0.42$$
+
+3. **Arm Counter-Swing Kinematics (Shoulder $\to$ Elbow $\to$ Wrist)**:
+   Arms swing in opposite phase to legs to cancel rotational angular momentum:
+   - **Shoulder Pitch**: $\theta_{\text{shoulder}}(\phi) = -0.42 \sin\phi$
+   - **Elbow Flexion**: $\theta_{\text{elbow}}(\phi) = 0.38 + 0.28 \max(0.0, \sin\phi)$
+
+#### Smooth Minimum Polynomial Blending ($smin$) for Muscle Bulging
+To prevent rigid hinge creasing at joints and simulate organic muscle expansion during contraction:
+$$smin(a, b, k) = \min(a, b) - \frac{\max(k - |a - b|, 0)^2}{4k}, \quad k \in [0.04, 0.09]$$
+- **Dynamic Muscle Bulging**: Thigh and calf radii expand proportionally to knee flexion:
+  $$r_{\text{thigh}}(\theta_{\text{knee}}) = 0.095 + 0.015 \left(\frac{\theta_{\text{knee}}}{0.8}\right)$$
+  $$r_{\text{calf}}(\theta_{\text{knee}}) = 0.080 + 0.012 \left(\frac{\theta_{\text{knee}}}{0.8}\right)$$
+
+#### Secondary Dynamic Planar Raymarched Reflections
+When a ray strikes the floor plane ($y = 0$), a secondary reflection ray $\vec{r}_{\text{refl}} = \text{reflect}(\vec{rd}, \vec{n}_{\text{floor}})$ marches up to 48 steps to render the dynamic reflection of the character on the polished surface, shaded using Schlick's Fresnel power law:
+$$\text{Fresnel} = \text{clamp}\left((1.0 - \vec{n} \cdot -\vec{rd})^3 \times 0.72 + 0.18, 0.0, 1.0\right)$$
+
+### 3. Hardware Compute Mechanics
+- **Shader Routine**: `render_kinematics(uv_x, uv_y)` in [`src/shaders/mod.rs`](file:///home/flava/dyno_term/src/shaders/mod.rs#L948-L1250).
+- **Execution Profile**:
+  - Continuous 16-joint kinematic hierarchy evaluation on every raymarch step.
+  - 96 primary raymarching steps + 4-tap central differences normal + 8-tap ambient occlusion.
+  - 48 secondary reflection raymarch steps per ground-plane pixel.
+  - High ALU vector transformation and trigonometric instruction density (`sin`, `cos`, `atan2`, `pow`, `exp`).
+- **Arithmetic Weight**: $1.4\times$.
+
+### 4. Inputs & Expected Outputs
+- **Inputs**: Uniform buffer parameters (`time`, `cam_pos`, `cam_dir`, `width`, `height`).
+- **Expected Output**: 32-bit packed RGBA buffer; fully articulated walking android with metallic chrome servos, carbon plating, glowing cyan visor, and ground reflection.
+- **Benchmark Target**: $\approx 94.5\text{ FPS}$ ($10.6\text{ ms}$) at 4K UHD on modern mainstream GPUs.
+
+### 5. Real-World Scientific & Industrial Use Cases
+- **Bipedal Robotics & Kinematic Control**: Legged locomotion trajectory planning, Zero Moment Point (ZMP) stability, and humanoid gait optimization (Boston Dynamics, Tesla Optimus).
+- **Computer Animation & VFX**: Forward/Inverse kinematics, dual-quaternion skeletal skinning, and blend-shape muscle simulation in Unreal Engine and Unity.
+- **Clinical Gait Analysis & Biomechanics**: Rehabilitation engineering, prosthetic limb kinematics, and orthopedic movement tracking.
+
+---
+
+## Act VIII: Kinetic Supernova (CPU Multi-Threaded Physics)
 
 *Hardware Focus: Multi-Core CPU IPC, Cache Coherency, Rayon Work-Stealing Parallelism & Gravitational Force Integration*
 
 <p align="center">
-  <img src="../assets/screenshots/act6_nbody.png" alt="Act VII: Kinetic Supernova" width="850" />
+  <img src="../assets/screenshots/act8_nbody.png" alt="Act VIII: Kinetic Supernova" width="850" />
 </p>
 
 ### 1. Concept & Art Direction
@@ -549,7 +621,7 @@ $$v_{\text{orbit}} = \sqrt{\frac{M_{\text{core}}}{r_i + 0.8}}$$
 
 ---
 
-## 9. Cross-Scene Hardware Stress Matrix & Diagnostics
+## 10. Cross-Scene Hardware Stress Matrix & Diagnostics
 
 | Scene | Primary Hardware Unit | Bottleneck Risk | Memory Pattern | Arithmetic Intensity | Weight |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -559,17 +631,19 @@ $$v_{\text{orbit}} = \sqrt{\frac{M_{\text{core}}}{r_i + 0.8}}$$
 | **Act IV: Tornado** | Texture/Math & Branch Units | Deep raymarch iterations | Volumetric sampling | Medium-High | $1.2\times$ |
 | **Act V: Cardiac** | ALU & Subsurface Loops | Nested loop stalls | 3D SDF + SSS march | High | $1.3\times$ |
 | **Act VI: LBM Vortex** | L1/L2 Cache & Vector ALU | Memory bandwidth (at 8K/16K) | 2D Stencil accesses | Very High | $1.5\times$ |
-| **Act VII: Supernova** | CPU IPC & Vector Units | CPU thermal throttle / memory bus | Contiguous Array Iteration | High (CPU) | $1.0\times$ |
+| **Act VII: Kinematics** | ALU & Raymarch Branches | Secondary reflection latency | Hierarchical transforms | High | $1.4\times$ |
+| **Act VIII: Supernova** | CPU IPC & Vector Units | CPU thermal throttle / memory bus | Contiguous Array Iteration | High (CPU) | $1.0\times$ |
 
 ### Diagnostic Throttling Heuristics
 When a GPU or CPU undergoes thermal or power throttling during benchmarking, the symptoms differ by scene:
 1. **SFU Throttling (Acts I & II)**: If the GPU drops clock frequency under high temperature, framerates in Acts I and II drop sharply ($> 15\%$), while memory-bound scenes degrade less.
-2. **Thermal Coupling Degradation ($\Delta T_{\text{hotspot}} > 35^\circ\text{C}$)**: Under heavy continuous workloads in Act II and Act VI, a junction-to-edge delta exceeding $35^\circ\text{C}$ flags pump-out or mounting pressure loss.
-3. **CPU Core Throttle (Act VII)**: If CPU threads experience thermal saturation, Rayon work-stealing stalls show up as elevated 1% low frametimes in the Act VII scorecard.
+2. **Thermal Coupling Degradation ($\Delta T_{\text{hotspot}} > 35^\circ\text{C}$)**: Under heavy continuous workloads in Act II, VI, and VII, a junction-to-edge delta exceeding $35^\circ\text{C}$ flags pump-out or mounting pressure loss.
+3. **Secondary Raymarch Stalls (Act VII)**: If memory latency spikes, the planar floor reflection passes in Act VII experience frame drops due to memory cache thrashing.
+4. **CPU Core Throttle (Act VIII)**: If CPU threads experience thermal saturation, Rayon work-stealing stalls show up as elevated 1% low frametimes in the Act VIII scorecard.
 
 ---
 
-## 10. Automation Scripts & Verification Pipeline
+## 11. Automation Scripts & Verification Pipeline
 
 `dyno_term` includes test and automation scripts in [`scripts/`](file:///home/flava/dyno_term/scripts/):
 
@@ -579,14 +653,14 @@ Executes both developer unit/integration tests and binary self-tests in one step
 ./scripts/run_tests.sh
 ```
 1. Runs `cargo test --all-targets` (validating 44 unit and integration tests).
-2. Executes `dyno_term --test` (verifying all 6 subsystems: CPU simulation, WGSL shaders, WebGPU pipeline, telemetry sensors, benchmark scorer, and ANSI renderer).
+2. Executes `dyno_term --test` (verifying all 6 subsystems: CPU simulation, WGSL shaders, WebGPU pipeline, telemetry sensors, benchmark scorer, and ANSI renderer across all 8 acts).
 
 ### 2. `scripts/run_consistency_benchmark.py`
 Automates repeated multi-run testing:
-- Executes 5 benchmark iterations with 60-second idle cooldown pauses.
+- Executes 5 benchmark iterations with 60-second idle cooldown pauses across all 8 acts.
 - Gathers hardware metrics, verifies run-to-run variance, and calculates statistical metrics (mean, std dev, coefficient of variation $CV\%$, and min/max spread).
 
 ### 3. `scripts/generate_screenshots.py`
 Automates rendering and capturing high-resolution reference images:
-- Invokes `dyno_term --capture assets/screenshots` to dump raw PPM framebuffers for each scene.
+- Invokes `dyno_term --capture assets/screenshots` to dump raw PPM framebuffers for each of the 8 acts.
 - Converts raw frames to PNGs with embedded telemetry status badges for documentation.

@@ -56,13 +56,24 @@ Aliev-Panfilov 2-variable reaction-diffusion system ($\partial u / \partial t$, 
 
 ### Act VI: Lattice Boltzmann Vortex Street (GPU - CFD Fluid Model)
 Lattice Boltzmann Method (LBM D2Q9) incompressible Navier-Stokes simulation evaluating 9 discrete velocity distribution streams ($c_0 \dots c_8$), BGK collision relaxation, 4-tap central difference vorticity curl ($\omega = \nabla \times \vec{u}$), and bluff body aerodynamic wake shedding forming an unsteady von Kármán Vortex Street.
+<p align="center">
+  <img src="assets/screenshots/act6_lbm_vortex.png" alt="Act VI: Lattice Boltzmann Vortex Street" width="850" />
+</p>
 
 ---
 
-### Act VII: Kinetic N-Body Supernova (CPU Rayon)
+### Act VII: Cybernetic Gait Kinematics (GPU - 3D Character Animation)
+Hierarchical forward kinematics bipedal gait simulation evaluating 16-joint articulated transformation trees, smooth minimum polynomial ($smin$) muscle contraction bulging, metallic servo reflection, and real-time planar raymarching floor reflections.
+<p align="center">
+  <img src="assets/screenshots/act7_kinematics.png" alt="Act VII: Cybernetic Gait Kinematics" width="850" />
+</p>
+
+---
+
+### Act VIII: Kinetic N-Body Supernova (CPU Rayon)
 32,000 gravitational celestial bodies simulated in parallel across all CPU cores/threads via Rayon, with collision dynamics, tidal tail dispersion, and velocity-based relativistic thermal heat gradient coloring.
 <p align="center">
-  <img src="assets/screenshots/act6_nbody.png" alt="Act VII: Kinetic N-Body Supernova" width="850" />
+  <img src="assets/screenshots/act8_nbody.png" alt="Act VIII: Kinetic N-Body Supernova" width="850" />
 </p>
 
 ---

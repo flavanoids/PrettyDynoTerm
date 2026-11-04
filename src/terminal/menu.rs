@@ -4,14 +4,15 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
 
-pub const SCENE_NAMES: [&str; 7] = [
+pub const SCENE_NAMES: [&str; 8] = [
     "Act I: Atmospheric Ocean Waves (GPU)",
     "Act II: The Mandelbulb Core (GPU)",
     "Act III: Relativistic Black Hole (GPU)",
     "Act IV: Tornadic Mesocyclone (GPU - Weather Model)",
     "Act V: Cardiac Electrophysiology (GPU - Medical Model)",
     "Act VI: Lattice Boltzmann Flow (GPU - CFD Vortex Street)",
-    "Act VII: Kinetic N-Body Supernova (CPU)",
+    "Act VII: Cybernetic Gait Kinematics (GPU - 3D Animation)",
+    "Act VIII: Kinetic N-Body Supernova (CPU)",
 ];
 
 pub const RESOLUTION_PRESETS: [(&str, &str, u32, u32); 7] = [
@@ -680,7 +681,7 @@ impl CliMenu {
             ("2", "Launch 100% Uncapped GPU Stress Test (Max Clock/Power)"),
             ("3", "Run Full Benchmark Suite (Deterministic Scorecard)"),
             ("4", "Run Consistency & Thermal Suite (5 Runs + Cooldown)"),
-            ("5", "Select Starting Scene (Act I - VII)"),
+            ("5", "Select Starting Scene (Act I - VIII)"),
             ("6", "Change Compute Resolution (16K -> 720p / Native / Custom)"),
             ("7", "Configure Benchmark Frames (30 / 100 / 300 / 1000)"),
             ("8", "Toggle Stress Mode (60 FPS Capped <-> Uncapped)"),

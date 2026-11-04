@@ -142,6 +142,7 @@ fn test_shader_suite() -> TestReport {
         "render_tornado",
         "render_cardiac",
         "render_lbm_vortex",
+        "render_kinematics",
     ];
     let mut missing_unified = Vec::new();
     for token in unified_checks {
@@ -153,7 +154,7 @@ fn test_shader_suite() -> TestReport {
         passed = false;
         details.push(format!("UNIFIED_SHADER missing tokens: {:?}", missing_unified));
     } else {
-        details.push("UNIFIED_SHADER WGSL structure & 6 GPU acts verified".to_string());
+        details.push("UNIFIED_SHADER WGSL structure & 7 GPU acts verified".to_string());
     }
 
     // Verify DOWNSAMPLE_SHADER
@@ -274,7 +275,7 @@ fn test_gpu_suite(preferred_gpu: Option<usize>) -> TestReport {
     let mut preview_buf = vec![0u8; (prev_w * prev_h * 4) as usize];
     let mut verified_scenes = 0;
 
-    for scene_id in 0..=5 {
+    for scene_id in 0..=6 {
         let uniforms = Uniforms {
             time: 1.5,
             frame: 1,
@@ -293,11 +294,11 @@ fn test_gpu_suite(preferred_gpu: Option<usize>) -> TestReport {
         }
     }
 
-    if verified_scenes == 6 {
-        details.push("All 6 GPU shader scenes (Waves, Mandelbulb, Black Hole, Tornado, Cardiac, LBM Vortex) compute & downsampling verified".to_string());
+    if verified_scenes == 7 {
+        details.push("All 7 GPU shader scenes (Waves, Mandelbulb, Black Hole, Tornado, Cardiac, LBM Vortex, Kinematics) compute & downsampling verified".to_string());
     } else {
         passed = false;
-        details.push(format!("Only {} of 6 GPU scenes produced valid render output", verified_scenes));
+        details.push(format!("Only {} of 7 GPU scenes produced valid render output", verified_scenes));
     }
 
     let duration = t0.elapsed();
