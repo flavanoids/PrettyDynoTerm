@@ -361,7 +361,7 @@ impl TelemetryCollector {
         None
     }
 
-    fn read_proc_stat() -> Option<(u64, u64)> {
+    pub fn read_proc_stat() -> Option<(u64, u64)> {
         let contents = fs::read_to_string("/proc/stat").ok()?;
         let first_line = contents.lines().next()?;
         let parts: Vec<&str> = first_line.split_whitespace().collect();
@@ -381,7 +381,7 @@ impl TelemetryCollector {
         Some((total, idle))
     }
 
-    fn read_cpu_name() -> String {
+    pub fn read_cpu_name() -> String {
         if let Ok(contents) = fs::read_to_string("/proc/cpuinfo") {
             for line in contents.lines() {
                 if line.starts_with("model name") {
@@ -401,5 +401,52 @@ impl Drop for TelemetryCollector {
         if let Some(handle) = self.worker_handle.take() {
             let _ = handle.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hardware_stats_default() {
+        let stats = HardwareStats::default();
+        assert_eq!(stats.gpu_clock_mhz, 0);
+        assert_eq!(stats.gpu_util_pct, 0.0);
+        assert_eq!(stats.gpu_temp_c, 0.0);
+        assert_eq!(stats.vram_used_mb, 0);
+        assert_eq!(stats.cpu_usage_pct, 0.0);
+    }
+
+    #[test]
+    fn test_cpu_threads_detected() {
+        let threads = std::thread::available_parallelism()
+            .map(|p| p.get())
+            .unwrap_or(1);
+        assert!(threads >= 1);
+    }
+
+    #[test]
+    fn test_read_cpu_name_non_empty() {
+        let name = TelemetryCollector::read_cpu_name();
+        assert!(!name.is_empty());
+    }
+
+    #[test]
+    fn test_read_proc_stat_format() {
+        // On Linux, /proc/stat should return Some((total, idle)) where total >= idle
+        if let Some((total, idle)) = TelemetryCollector::read_proc_stat() {
+            assert!(total >= idle);
+            assert!(total > 0);
+        }
+    }
+
+    #[test]
+    fn test_telemetry_collector_lifecycle() {
+        let collector = TelemetryCollector::new("Test Adapter".to_string());
+        let stats = collector.sample("Test Adapter");
+        assert_eq!(stats.gpu_name, "Test Adapter");
+        assert!(stats.cpu_threads >= 1);
+        drop(collector);
     }
 }

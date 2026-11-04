@@ -1,5 +1,4 @@
 /target
 dyno_benchmark_results*.json
 *.log
-docs/
 .DS_Store

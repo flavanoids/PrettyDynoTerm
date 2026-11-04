@@ -150,3 +150,29 @@ Runs deterministic frames across all six acts and generates a scorecard:
 # 720p APU / Mobile (1280x720)
 ./target/release/dyno_term --res 720p
 ```
+
+### 5. Comprehensive Self-Test & System Diagnostics
+Verify CPU physics simulation, WGSL shader compilation, GPU compute passes, telemetry sensors, benchmark scoring, and terminal rendering directly from the CLI:
+```bash
+# Run comprehensive self-tests & hardware diagnostics
+./target/release/dyno_term --test
+
+# Alias
+./target/release/dyno_term --self-test
+```
+
+---
+
+## Running Tests
+
+### Automated Developer Test Suite
+To run all unit and integration test suites:
+```bash
+cargo test --all-targets
+```
+
+### Comprehensive Test Runner Script
+To run both the full Cargo test suite and the binary self-test in one step:
+```bash
+./scripts/run_tests.sh
+```

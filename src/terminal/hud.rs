@@ -647,4 +647,12 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_get_scene_math_models() {
+        for scene_id in 0..=5 {
+            let desc = get_scene_math_model(scene_id);
+            assert!(!desc.is_empty(), "Scene {} math model should not be empty", scene_id);
+        }
+    }
 }

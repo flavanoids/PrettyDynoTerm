@@ -830,3 +830,51 @@ fn downsample_main(@builtin(global_invocation_id) id: vec3<u32>) {
     dst_pixels[dst_idx] = src_pixels[src_idx];
 }
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gpu::pipeline::{DownsampleUniforms, Uniforms};
+
+    #[test]
+    fn test_unified_shader_not_empty_and_valid_tokens() {
+        assert!(!UNIFIED_SHADER.is_empty());
+        assert!(UNIFIED_SHADER.contains("@compute"));
+        assert!(UNIFIED_SHADER.contains("@workgroup_size(16, 16)"));
+        assert!(UNIFIED_SHADER.contains("struct Uniforms"));
+        assert!(UNIFIED_SHADER.contains("fn main("));
+        assert!(UNIFIED_SHADER.contains("render_waves"));
+        assert!(UNIFIED_SHADER.contains("render_mandelbulb"));
+        assert!(UNIFIED_SHADER.contains("render_blackhole"));
+        assert!(UNIFIED_SHADER.contains("render_tornado"));
+        assert!(UNIFIED_SHADER.contains("render_cardiac"));
+    }
+
+    #[test]
+    fn test_downsample_shader_not_empty_and_valid_tokens() {
+        assert!(!DOWNSAMPLE_SHADER.is_empty());
+        assert!(DOWNSAMPLE_SHADER.contains("@compute"));
+        assert!(DOWNSAMPLE_SHADER.contains("@workgroup_size(16, 16)"));
+        assert!(DOWNSAMPLE_SHADER.contains("struct DownsampleUniforms"));
+        assert!(DOWNSAMPLE_SHADER.contains("fn downsample_main("));
+    }
+
+    #[test]
+    fn test_uniform_struct_memory_layouts() {
+        assert_eq!(
+            std::mem::size_of::<Uniforms>(),
+            48,
+            "Uniforms size must match WGSL 48-byte layout"
+        );
+        assert_eq!(
+            std::mem::size_of::<Uniforms>() % 16,
+            0,
+            "Uniforms size must be 16-byte aligned for WGSL std140"
+        );
+        assert_eq!(
+            std::mem::size_of::<DownsampleUniforms>(),
+            16,
+            "DownsampleUniforms size must match WGSL 16-byte layout"
+        );
+    }
+}

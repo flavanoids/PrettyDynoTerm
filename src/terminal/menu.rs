@@ -1159,4 +1159,15 @@ mod tests {
         let centered = format_centered(colored);
         assert_eq!(visible_len(&centered), 76);
     }
+
+    #[test]
+    fn test_format_resolution_tags() {
+        assert!(format_resolution_tag(15360, 8640).contains("16K UHD (15360x8640)"));
+        assert!(format_resolution_tag(7680, 4320).contains("8K UHD (7680x4320)"));
+        assert!(format_resolution_tag(3840, 2160).contains("4K UHD (3840x2160)"));
+        assert!(format_resolution_tag(2560, 1440).contains("1440p QHD (2560x1440)"));
+        assert!(format_resolution_tag(1920, 1080).contains("1080p FHD (1920x1080)"));
+        assert!(format_resolution_tag(1280, 720).contains("720p HD (1280x720)"));
+        assert!(format_resolution_tag(800, 600).contains("800x600"));
+    }
 }

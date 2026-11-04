@@ -114,11 +114,10 @@ impl NBodySimulation {
     /// Rasterize particles directly to preview dimensions (avoids allocating and clearing 530MB framebuffers)
     pub fn rasterize_to_preview(&self, buffer: &mut [u8], width: usize, height: usize) {
         let expected_len = width * height * 4;
-        let buf = if buffer.len() >= expected_len {
-            &mut buffer[..expected_len]
-        } else {
-            buffer
-        };
+        if buffer.len() < expected_len || width == 0 || height == 0 {
+            return;
+        }
+        let buf = &mut buffer[..expected_len];
 
         // Clear buffer to dark cosmic obsidian
         for chunk in buf.chunks_exact_mut(4) {
@@ -158,5 +157,79 @@ impl NBodySimulation {
                 buf[idx + 2] = buf[idx + 2].saturating_add(b);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_nbody_initialization() {
+        let count = 512;
+        let sim = NBodySimulation::new(count, 120, 60);
+        assert_eq!(sim.particles.len(), count);
+        assert_eq!(sim.width, 120);
+        assert_eq!(sim.height, 60);
+
+        for p in &sim.particles {
+            assert!(p.x.is_finite());
+            assert!(p.y.is_finite());
+            assert!(p.z.is_finite());
+            assert!(p.vx.is_finite());
+            assert!(p.vy.is_finite());
+            assert!(p.vz.is_finite());
+            assert!(p.mass > 0.0);
+        }
+    }
+
+    #[test]
+    fn test_nbody_step_multithreaded_no_nans() {
+        let mut sim = NBodySimulation::new(256, 100, 50);
+        let orig_pos_0 = (sim.particles[0].x, sim.particles[0].y, sim.particles[0].z);
+
+        sim.step_multithreaded(0.016);
+
+        let new_pos_0 = (sim.particles[0].x, sim.particles[0].y, sim.particles[0].z);
+        // Particle should have moved
+        assert_ne!(orig_pos_0, new_pos_0);
+
+        // All particles should remain finite numbers
+        for p in &sim.particles {
+            assert!(p.x.is_finite(), "x became non-finite");
+            assert!(p.y.is_finite(), "y became non-finite");
+            assert!(p.z.is_finite(), "z became non-finite");
+            assert!(p.vx.is_finite(), "vx became non-finite");
+            assert!(p.vy.is_finite(), "vy became non-finite");
+            assert!(p.vz.is_finite(), "vz became non-finite");
+        }
+    }
+
+    #[test]
+    fn test_nbody_rasterize_to_preview() {
+        let sim = NBodySimulation::new(128, 40, 20);
+        let mut buffer = vec![0u8; 40 * 20 * 4];
+        sim.rasterize_to_preview(&mut buffer, 40, 20);
+
+        // Check clear color on pixel 0 (dark cosmic obsidian [5, 6, 16, 255])
+        assert_eq!(buffer[3], 255); // Alpha should be 255
+
+        // Check that at least some particle colors were blended
+        let has_particles = buffer.chunks_exact(4).any(|chunk| {
+            chunk[0] > 5 || chunk[1] > 6 || chunk[2] > 16
+        });
+        assert!(has_particles, "Rasterizer should render particles into buffer");
+    }
+
+    #[test]
+    fn test_nbody_rasterize_bounds_protection() {
+        let sim = NBodySimulation::new(64, 40, 20);
+        // Smaller buffer than expected should not panic
+        let mut small_buffer = vec![0u8; 10];
+        sim.rasterize_to_preview(&mut small_buffer, 40, 20);
+
+        // Zero-sized buffer
+        let mut empty_buffer: Vec<u8> = Vec::new();
+        sim.rasterize_to_preview(&mut empty_buffer, 40, 20);
     }
 }

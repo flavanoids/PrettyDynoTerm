@@ -148,3 +148,37 @@ pub fn downsample_rgba(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_terminal_renderer_new() {
+        let renderer = TerminalRenderer::new();
+        assert!(!renderer.has_last_colors);
+    }
+
+    #[test]
+    fn test_downsample_rgba_identity() {
+        let src = vec![1, 2, 3, 255, 4, 5, 6, 255];
+        let mut dst = vec![0u8; 8];
+        downsample_rgba(&src, 2, 1, &mut dst, 2, 1);
+        assert_eq!(dst, src);
+    }
+
+    #[test]
+    fn test_downsample_rgba_downscale() {
+        // 4x2 source
+        let src = vec![
+            10, 10, 10, 255, 20, 20, 20, 255, 30, 30, 30, 255, 40, 40, 40, 255,
+            50, 50, 50, 255, 60, 60, 60, 255, 70, 70, 70, 255, 80, 80, 80, 255,
+        ];
+        // 2x1 destination
+        let mut dst = vec![0u8; 2 * 1 * 4];
+        downsample_rgba(&src, 4, 2, &mut dst, 2, 1);
+        assert_eq!(dst.len(), 8);
+        assert_eq!(dst[3], 255);
+        assert_eq!(dst[7], 255);
+    }
+}

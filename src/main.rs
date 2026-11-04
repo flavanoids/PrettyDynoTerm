@@ -1,85 +1,26 @@
-mod benchmark;
-mod cpu;
-mod gpu;
-mod shaders;
-mod telemetry;
-mod terminal;
-
-use benchmark::{BenchmarkReport, BenchmarkScorer, SystemReport};
 use clap::Parser;
-use cpu::NBodySimulation;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use gpu::{ComputePipelineManager, GpuContext};
-use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use telemetry::TelemetryCollector;
-use terminal::{
+use dyno_term::benchmark::{BenchmarkReport, BenchmarkScorer, SystemReport};
+use dyno_term::cli::{parse_resolution, Args};
+use dyno_term::cpu::NBodySimulation;
+use dyno_term::gpu::{self, ComputePipelineManager, GpuContext};
+use dyno_term::self_test;
+use dyno_term::shaders;
+use dyno_term::telemetry::TelemetryCollector;
+use dyno_term::terminal::{
     format_resolution_tag, get_scene_math_model, visible_len, CliMenu, Hud, HudMode, MenuAction, MenuConfig,
     TerminalRenderer,
 };
-
-#[derive(Parser, Debug)]
-#[command(
-    name = "dyno_term",
-    about = "Cross-platform terminal GPU/CPU benchmark & artistic demoparty renderer",
-    version = "1.0.0"
-)]
-struct Args {
-    /// Open the interactive CLI launcher menu (default when no mode flag is passed)
-    #[arg(short, long)]
-    menu: bool,
-
-    /// Run the deterministic benchmark suite directly
-    #[arg(short, long)]
-    benchmark: bool,
-
-    /// Run in interactive demo preview mode directly
-    #[arg(short, long)]
-    demo: bool,
-
-    /// Run demo mode uncapped (100% GPU stress test, no 60 FPS limiter)
-    #[arg(short, long)]
-    uncapped: bool,
-
-    /// Number of frames per scene in benchmark mode
-    #[arg(short, long, default_value_t = 100)]
-    frames: u32,
-
-    /// Compute resolution preset ("16k", "8k", "4k", "1440p", "1080p", "720p", "native")
-    #[arg(long, default_value = "4k")]
-    res: String,
-
-    /// Specific scene to display in demo mode (0: Waves, 1: Mandelbulb, 2: Black Hole, 3: Tornado, 4: Cardiac, 5: CPU N-Body)
-    #[arg(short, long, default_value_t = 0)]
-    scene: u32,
-
-    /// Select GPU adapter by index
-    #[arg(short, long)]
-    gpu: Option<usize>,
-
-    /// List all available GPU adapters and exit
-    #[arg(long)]
-    list_gpus: bool,
-
-    /// Custom render width in pixels
-    #[arg(long)]
-    width: Option<u32>,
-
-    /// Custom render height in pixels
-    #[arg(long)]
-    height: Option<u32>,
-
-    /// Output JSON path for benchmark report
-    #[arg(short, long, default_value = "dyno_benchmark_results.json")]
-    output: String,
-
-    /// Capture raw frame screenshots of all 6 acts to output directory and exit
-    #[arg(long)]
-    capture: Option<String>,
-}
+use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+
+    if args.test {
+        self_test::run_self_tests(args.gpu)?;
+        return Ok(());
+    }
 
     if args.list_gpus {
         println!("Available GPU Adapters:");
@@ -116,16 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_menu = args.menu || (!run_demo && !run_benchmark_mode);
 
     // Canonical internal compute resolution: Defaults to 4K UHD (3840x2160) for balanced high-performance GPU compute
-    let (compute_w, compute_h) = match args.res.to_lowercase().as_str() {
-        "16k" => (15360, 8640),
-        "8k" => (7680, 4320),
-        "4k" | "2160p" | "uhd" => (3840, 2160),
-        "1440p" | "2k" | "qhd" => (2560, 1440),
-        "1080p" | "fhd" => (1920, 1080),
-        "720p" | "hd" => (1280, 720),
-        "native" => (term_width, term_pixel_height),
-        _ => (3840, 2160),
-    };
+    let (compute_w, compute_h) = parse_resolution(&args.res, term_width, term_pixel_height);
 
     let res_tag = format_resolution_tag(compute_w, compute_h);
 
