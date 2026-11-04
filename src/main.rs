@@ -1,8 +1,9 @@
 use clap::Parser;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use dyno_term::benchmark::{
-    compute_consistency_report, format_consistency_scorecard, save_consistency_report,
-    BenchmarkReport, BenchmarkScorer, SystemReport, DEFAULT_CONSISTENCY_FILE,
+    compute_consistency_report, format_consistency_scorecard, format_gpu_assessment_box,
+    save_consistency_report, BenchmarkReport, BenchmarkScorer, SystemReport,
+    DEFAULT_CONSISTENCY_FILE,
 };
 use dyno_term::cli::{parse_resolution, Args};
 use dyno_term::cpu::NBodySimulation;
@@ -582,15 +583,7 @@ fn execute_benchmark_pass(
                 let frame_dur = frame_start.elapsed();
 
                 let stats = telemetry.sample(&adapter_info.name);
-                scorer.record_frame(
-                    frame_dur,
-                    stats.gpu_temp_c,
-                    stats.gpu_hotspot_c,
-                    stats.gpu_util_pct,
-                    stats.gpu_power_w,
-                    stats.vram_used_mb,
-                    stats.gpu_clock_mhz,
-                );
+                scorer.record_frame_with_stats(frame_dur, scene_id, &stats);
 
                 if should_draw_terminal {
                     last_terminal_draw = Instant::now();
@@ -618,15 +611,7 @@ fn execute_benchmark_pass(
                 let frame_dur = frame_start.elapsed();
 
                 let stats = telemetry.sample(&adapter_info.name);
-                scorer.record_frame(
-                    frame_dur,
-                    stats.gpu_temp_c,
-                    stats.gpu_hotspot_c,
-                    stats.gpu_util_pct,
-                    stats.gpu_power_w,
-                    stats.vram_used_mb,
-                    stats.gpu_clock_mhz,
-                );
+                scorer.record_frame_with_stats(frame_dur, scene_id, &stats);
 
                 if should_draw_terminal {
                     last_terminal_draw = Instant::now();
@@ -658,6 +643,9 @@ fn execute_benchmark_pass(
             scene_names[scene_id as usize],
             compute_pixels,
         );
+        let stats_end = telemetry.sample(&adapter_info.name);
+        scorer.record_telemetry_snapshot(scene_id, &stats_end, true);
+
         cumulative_score += scene_result.score;
         scene_results.push(scene_result);
     }
@@ -666,6 +654,7 @@ fn execute_benchmark_pass(
     let total_score: u64 = scene_results.iter().map(|s| s.score).sum();
 
     let stats = telemetry.sample(&adapter_info.name);
+    let assessment = scorer.generate_telemetry_assessment(&stats);
     let report = BenchmarkReport {
         timestamp: {
             let secs = SystemTime::now()
@@ -691,6 +680,8 @@ fn execute_benchmark_pass(
         peak_gpu_clock_mhz: scorer.peak_clock.max(stats.peak_gpu_clock_mhz),
         peak_vram_mb: scorer.peak_vram,
         scene_results: scene_results.clone(),
+        gpu_telemetry: Some(assessment),
+        telemetry_samples: scorer.snapshots.clone(),
     };
 
     Ok(Some(report))
@@ -1002,6 +993,9 @@ fn print_scorecard(report: &BenchmarkReport, output_path: &str, resolution: &str
         peak_str,
         " ".repeat(pad_len)
     );
+    if let Some(ref assessment) = report.gpu_telemetry {
+        print!("{}", format_gpu_assessment_box(assessment));
+    }
     println!("\x1b[38;2;0;220;255m├──────────────────────────────────────────────────────────────────────────┤\x1b[0m");
     println!(
         "\x1b[38;2;255;255;255;1m│ OVERALL DYNO BENCHMARK SCORE:                 \x1b[38;2;255;180;0;1m{:>12} POINTS         \x1b[38;2;0;220;255m│",

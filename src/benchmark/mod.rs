@@ -1,5 +1,6 @@
 pub mod consistency;
 pub mod history;
+pub mod telemetry;
 pub use consistency::{
     compute_consistency_report, format_consistency_scorecard, load_consistency_report,
     save_consistency_report, ConsistencyReport, SceneConsistencyStats, StatSummary,
@@ -10,10 +11,13 @@ pub use history::{
     load_baseline, load_history, save_baseline, BenchmarkComparison, SceneComparison,
     DEFAULT_BASELINE_FILE, DEFAULT_HISTORY_FILE,
 };
+pub use telemetry::{
+    format_gpu_assessment_box, GpuTelemetryAssessment, SensorMetric, TelemetrySnapshot,
+};
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SceneResult {
@@ -44,6 +48,10 @@ pub struct BenchmarkReport {
     pub peak_gpu_clock_mhz: u32,
     pub peak_vram_mb: u64,
     pub scene_results: Vec<SceneResult>,
+    #[serde(default)]
+    pub gpu_telemetry: Option<GpuTelemetryAssessment>,
+    #[serde(default)]
+    pub telemetry_samples: Vec<TelemetrySnapshot>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,10 +71,14 @@ pub struct BenchmarkScorer {
     pub peak_power: f32,
     pub peak_clock: u32,
     pub peak_vram: u64,
+    pub snapshots: Vec<TelemetrySnapshot>,
+    benchmark_start: Instant,
+    last_snapshot_time: Instant,
 }
 
 impl BenchmarkScorer {
     pub fn new() -> Self {
+        let now = Instant::now();
         Self {
             frametimes: Vec::with_capacity(2048),
             peak_temp: 0.0,
@@ -75,6 +87,9 @@ impl BenchmarkScorer {
             peak_power: 0.0,
             peak_clock: 0,
             peak_vram: 0,
+            snapshots: Vec::with_capacity(512),
+            benchmark_start: now,
+            last_snapshot_time: now - Duration::from_secs(1),
         }
     }
 
@@ -107,6 +122,67 @@ impl BenchmarkScorer {
         if clock > self.peak_clock {
             self.peak_clock = clock;
         }
+    }
+
+    pub fn record_frame_with_stats(
+        &mut self,
+        dt: Duration,
+        scene_id: u32,
+        stats: &crate::telemetry::HardwareStats,
+    ) {
+        self.record_frame(
+            dt,
+            stats.gpu_temp_c,
+            stats.gpu_hotspot_c,
+            stats.gpu_util_pct,
+            stats.gpu_power_w,
+            stats.vram_used_mb,
+            stats.gpu_clock_mhz,
+        );
+        self.record_telemetry_snapshot(scene_id, stats, false);
+    }
+
+    pub fn record_telemetry_snapshot(
+        &mut self,
+        scene_id: u32,
+        stats: &crate::telemetry::HardwareStats,
+        force: bool,
+    ) {
+        let now = Instant::now();
+        if force || now.duration_since(self.last_snapshot_time) >= Duration::from_millis(250) {
+            self.last_snapshot_time = now;
+            let elapsed_sec = now.duration_since(self.benchmark_start).as_secs_f32();
+            let last_dt = self.frametimes.last().copied().unwrap_or(Duration::from_millis(16));
+            let frametime_ms = last_dt.as_secs_f32() * 1000.0;
+            let fps = if frametime_ms > 0.0 { 1000.0 / frametime_ms } else { 0.0 };
+            let fan_pwm_pct = (stats.gpu_fan_pwm as f32 / 255.0) * 100.0;
+
+            self.snapshots.push(TelemetrySnapshot {
+                elapsed_sec,
+                act_id: scene_id,
+                fps,
+                frametime_ms,
+                core_clock_mhz: stats.gpu_clock_mhz,
+                mem_clock_mhz: stats.gpu_mem_clock_mhz,
+                core_voltage_mv: stats.gpu_voltage_mv,
+                gpu_util_pct: stats.gpu_util_pct,
+                mem_util_pct: stats.mem_util_pct,
+                edge_temp_c: stats.gpu_temp_c,
+                hotspot_temp_c: stats.gpu_hotspot_c,
+                mem_temp_c: stats.gpu_mem_temp_c,
+                fan_rpm: stats.gpu_fan_rpm,
+                fan_pwm_pct,
+                board_power_w: stats.gpu_power_w,
+                vram_used_mb: stats.vram_used_mb,
+            });
+        }
+    }
+
+    pub fn generate_telemetry_assessment(
+        &self,
+        final_stats: &crate::telemetry::HardwareStats,
+    ) -> GpuTelemetryAssessment {
+        GpuTelemetryAssessment::evaluate(&self.snapshots, final_stats)
     }
 
     pub fn current_scene_score(&self, scene_id: u32, pixels_per_frame: u64) -> u64 {
@@ -299,6 +375,8 @@ mod tests {
                 p1_low_frametime_ms: 18.2,
                 score: 15900,
             }],
+            gpu_telemetry: None,
+            telemetry_samples: vec![],
         };
 
         let json = serde_json::to_string_pretty(&report).expect("Serialization failed");
@@ -332,6 +410,8 @@ mod tests {
             peak_gpu_clock_mhz: 1800,
             peak_vram_mb: 1024,
             scene_results: vec![],
+            gpu_telemetry: None,
+            telemetry_samples: vec![],
         };
 
         let temp_dir = std::env::temp_dir();
@@ -374,6 +454,8 @@ mod tests {
                 p1_low_frametime_ms: 17.0,
                 score: 16000,
             }],
+            gpu_telemetry: None,
+            telemetry_samples: vec![],
         };
 
         let report2 = BenchmarkReport {
@@ -398,6 +480,8 @@ mod tests {
                 p1_low_frametime_ms: 16.0,
                 score: 17000,
             }],
+            gpu_telemetry: None,
+            telemetry_samples: vec![],
         };
 
         let temp_dir = std::env::temp_dir();

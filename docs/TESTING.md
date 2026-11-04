@@ -85,7 +85,7 @@ When `-t, --test` is provided, `dyno_term` runs in non-interactive stdout mode, 
 
 ## 3. Automated Developer Test Suite (`cargo test`)
 
-The automated test suite contains **40 tests** spanning unit, integration, and CLI domains:
+The automated test suite contains **44 tests** spanning unit, integration, and CLI domains:
 
 ```bash
 cargo test --all-targets -- --nocapture
@@ -97,6 +97,7 @@ cargo test --all-targets -- --nocapture
 | :--- | :--- | :--- | :--- |
 | `src/lib.rs` | `benchmark::tests` | 7 | Empty result handling, peak tracking, frametime & 1% low percentiles, scene weighting formulas, JSON report round-trip, report file writing, history and baseline workflow. |
 | `src/lib.rs` | `benchmark::consistency::tests` | 4 | StatSummary calculations (mean, standard deviation, variance, range, CV%), empty stat protection, consistency rating thresholds, JSON round-trip save/load, and ANSI scorecard generation. |
+| `src/lib.rs` | `benchmark::telemetry::tests` | 4 | SensorMetric min/max/avg/p95 calculations, empty metric fallbacks, automated GPU sensor assessment (thermal delta, headroom, fan PWM, power cap), and thermal throttling heuristic detection. |
 | `src/lib.rs` | `cpu::tests` | 4 | Initialization particle distribution, multithreaded step determinism, absence of NaNs/Infs, preview rasterization, buffer bounds safety. |
 | `src/lib.rs` | `shaders::tests` | 3 | Unified shader WGSL structure, downsampler WGSL structure, std140 uniform memory struct alignment and size checks. |
 | `src/lib.rs` | `telemetry::tests` | 5 | HardwareStats defaults, CPU thread detection, CPU brand string reading, `/proc/stat` format, TelemetryCollector worker lifecycle. |

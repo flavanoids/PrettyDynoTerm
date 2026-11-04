@@ -84,13 +84,46 @@ Average FPS alone can hide stuttering, thread stalls, and pipeline bubbles. `dyn
 
 ---
 
-## 5. JSON Telemetry Schema (`dyno_benchmark_results.json`)
+## 5. Automated GPU Sensor Assessment & Telemetry Architecture
 
-Every benchmark run exports a structured JSON report for logging and leaderboard integration:
+`dyno_term` features a continuous, low-overhead hardware telemetry engine that polls kernel sysfs interfaces (`/sys/class/hwmon` and `/sys/class/drm/card*/device/`) every 15ms.
+
+### Hardware Metrics Collected
+- **Voltages & Power**: GPU core voltage ($V_{\text{core}} / V_{\text{ddgfx}}$ in mV), instantaneous board power (Watts), and OEM board power limit / PPT cap ($P_{\text{cap}}$).
+- **Frequencies & Bus**: Core clock frequency (MHz), Memory clock (MHz), Memory controller load percentage (`mem_busy_percent`), VRAM vendor architecture (e.g. Samsung GDDR6, Micron, SK Hynix), and negotiated PCIe link speed and width (`pp_dpm_pcie`, e.g. `PCIe 16.0 GT/s (x8)`).
+- **Thermals & Acoustics**: Standard package/edge temperature, internal localized junction/hotspot peak, VRAM IC sensor temperature, hardware critical thermal throttle thresholds ($T_{\text{crit}}$), acoustic fan RPM, and fan PWM duty cycle percentage.
+
+### Automated Assessment Heuristics
+1. **Thermal Coupling Delta ($\Delta T_{\text{hotspot}}$)**:
+   $$\Delta T_{\text{hotspot}} = T_{\text{hotspot}} - T_{\text{edge}}$$
+   - $\le 18^\circ\text{C}$: **`OPTIMAL`** (Exceptional vapor chamber coupling and uniform thermal contact)
+   - $\le 28^\circ\text{C}$: **`NOMINAL`** (Healthy thermal interface material and mounting pressure)
+   - $29-35^\circ\text{C}$: **`ELEVATED`** (Warm thermal gradient, heat dissipation constrained)
+   - $> 35^\circ\text{C}$: **`CRITICAL`** (Degraded thermal interface, pump-out, or uneven coldplate mounting)
+
+2. **Thermal Headroom**:
+   $$\text{Headroom} = T_{\text{crit}} - T_{\text{hotspot}}$$
+   Evaluates remaining temperature margin before hardware thermal trip points (typically $110^\circ\text{C}$ on AMD Navi and $105^\circ\text{C}$ on NVIDIA architectures).
+
+3. **Throttling Verdict Engine**:
+   Flags throttling if:
+   - Thermal headroom $\le 2.0^\circ\text{C}$ with hotspot $\ge 95.0^\circ\text{C}$, OR
+   - Hotspot $\ge T_{\text{crit}}$, OR
+   - Core clock drops $> 22\%$ below peak under heavy continuous GPU load ($\ge 85\%$).
+
+4. **Power Limit Detection**:
+   Detects whether the benchmark reached the maximum allowable board PPT cap:
+   $$P_{\text{peak}} \ge 0.98 \times P_{\text{cap}}$$
+
+---
+
+## 6. JSON Telemetry Schema (`dyno_benchmark_results.json`)
+
+Every benchmark run exports a structured JSON report including top-level peak metrics, per-act results, automated GPU assessment scorecard, and continuous periodic time-series telemetry snapshots (sampled at 4 Hz):
 
 ```json
 {
-  "timestamp": "UTC_Epoch_1793666272",
+  "timestamp": "UTC_Epoch_1793814430",
   "system_info": {
     "gpu_name": "AMD Radeon RX 6650 XT (RADV NAVI23)",
     "gpu_backend": "Vulkan",
@@ -98,22 +131,67 @@ Every benchmark run exports a structured JSON report for logging and leaderboard
     "cpu_name": "12th Gen Intel(R) Core(TM) i5-12600K",
     "cpu_threads": 16
   },
-  "total_elapsed_seconds": 1.90,
-  "total_frames": 16,
-  "overall_score": 77487233,
-  "peak_gpu_temp_c": 53.0,
-  "peak_gpu_power_w": 64.0,
-  "peak_vram_mb": 6064,
+  "total_elapsed_seconds": 6.82,
+  "total_frames": 700,
+  "overall_score": 180940817,
+  "peak_gpu_temp_c": 66.0,
+  "peak_gpu_hotspot_c": 99.0,
+  "peak_gpu_util_pct: 100.0,
+  "peak_gpu_power_w": 156.0,
+  "peak_gpu_clock_mhz": 2765,
+  "peak_vram_mb": 5558,
+  "gpu_telemetry": {
+    "vram_vendor": "Samsung GDDR6",
+    "pcie_link": "PCIe 16.0GT/s (x8)",
+    "power_cap_w": 157.0,
+    "temp_crit_c": 100.0,
+    "hotspot_crit_c": 110.0,
+    "edge_temp_c": { "min": 42.0, "max": 65.0, "avg": 61.2, "p95": 65.0 },
+    "hotspot_temp_c": { "min": 42.0, "max": 99.0, "avg": 91.4, "p95": 99.0 },
+    "mem_temp_c": { "min": 40.0, "max": 46.0, "avg": 42.1, "p95": 46.0 },
+    "delta_hotspot_edge_c": 34.0,
+    "thermal_headroom_c": 11.0,
+    "core_clock_mhz": { "min": 77.0, "max": 2765.0, "avg": 2553.0, "p95": 2661.0 },
+    "mem_clock_mhz": { "min": 541.0, "max": 1094.0, "avg": 641.0, "p95": 675.0 },
+    "core_voltage_mv": { "min": 6.0, "max": 1150.0, "avg": 1084.0, "p95": 1143.0 },
+    "board_power_w": { "min": 14.0, "max": 156.0, "avg": 139.9, "p95": 156.0 },
+    "fan_rpm": { "min": 0.0, "max": 1431.0, "avg": 1162.0, "p95": 1395.0 },
+    "peak_fan_pwm_pct": 43.1,
+    "thermal_verdict": "HEALTHY — 11.0°C thermal headroom, sustained boost",
+    "cooling_efficiency_rating": "ELEVATED (Die Δ 29-35°C, Warm Thermal Gradient)",
+    "throttling_detected": false,
+    "power_limit_pegged": true
+  },
+  "telemetry_samples": [
+    {
+      "elapsed_sec": 0.012,
+      "act_id": 0,
+      "fps": 89.2,
+      "frametime_ms": 11.2,
+      "core_clock_mhz": 77,
+      "mem_clock_mhz": 541,
+      "core_voltage_mv": 725,
+      "gpu_util_pct": 2.0,
+      "mem_util_pct": 1.0,
+      "edge_temp_c": 42.0,
+      "hotspot_temp_c": 42.0,
+      "mem_temp_c": 40.0,
+      "fan_rpm": 0,
+      "fan_pwm_pct": 0.0,
+      "board_power_w": 14.0,
+      "vram_used_mb": 5555
+    }
+  ],
   "scene_results": [
     {
       "scene_id": 0,
-      "scene_name": "BIOLUMINESCENT WAVES (GPU)",
-      "frames_rendered": 4,
-      "elapsed_seconds": 0.608,
-      "avg_fps": 6.6,
-      "avg_frametime_ms": 152.07,
-      "p1_low_frametime_ms": 166.17,
-      "score": 8727182
+      "scene_name": "ATMOSPHERIC OCEAN WAVES (GPU)",
+      "frames_rendered": 100,
+      "elapsed_seconds": 1.055,
+      "avg_fps": 94.7,
+      "avg_frametime_ms": 10.55,
+      "p1_low_frametime_ms": 10.65,
+      "score": 7887323
     }
   ]
 }

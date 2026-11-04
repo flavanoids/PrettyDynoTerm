@@ -9,18 +9,46 @@ use std::time::{Duration, Instant};
 pub struct HardwareStats {
     pub gpu_name: String,
     pub gpu_clock_mhz: u32,
+    pub gpu_mem_clock_mhz: u32, // Memory clock in MHz
+    pub gpu_voltage_mv: u32,    // GPU core voltage in millivolts
     pub gpu_util_pct: f32,      // GPU core load percentage (0 - 100%)
+    pub mem_util_pct: f32,      // Memory controller load percentage (0 - 100%)
     pub gpu_temp_c: f32,        // Edge / Package temp (standard GPU temp matching btop)
     pub gpu_hotspot_c: f32,     // Junction / Hotspot temp (silicon localized peak)
     pub gpu_mem_temp_c: f32,    // VRAM / Memory temp (if available)
-    pub gpu_power_w: f32,
+    pub gpu_temp_crit_c: f32,   // Critical thermal throttle threshold for edge
+    pub gpu_hotspot_crit_c: f32,// Critical thermal throttle threshold for junction
+    pub gpu_fan_rpm: u32,       // Current fan speed in RPM
+    pub gpu_fan_max_rpm: u32,   // Maximum rated fan speed
+    pub gpu_fan_pwm: u32,       // PWM duty cycle (0 - 255)
+    pub gpu_power_w: f32,       // Current board power draw (Watts)
+    pub gpu_power_cap_w: f32,   // Board power limit / PPT cap (Watts)
     pub vram_used_mb: u64,
     pub vram_total_mb: u64,
+    pub vram_vendor: String,    // "Samsung GDDR6", "Micron", etc.
+    pub pcie_link: String,      // "16.0 GT/s, x8"
     pub cpu_name: String,
     pub cpu_usage_pct: f32,
     pub cpu_threads: usize,
     pub peak_gpu_clock_mhz: u32,
     pub peak_gpu_util_pct: f32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct HwmonSensors {
+    pub clock_mhz: u32,
+    pub mem_clock_mhz: u32,
+    pub voltage_mv: u32,
+    pub edge_temp_c: f32,
+    pub hotspot_temp_c: f32,
+    pub mem_temp_c: f32,
+    pub temp_crit_c: f32,
+    pub hotspot_crit_c: f32,
+    pub fan_rpm: u32,
+    pub fan_max_rpm: u32,
+    pub fan_pwm: u32,
+    pub power_w: f32,
+    pub power_cap_w: f32,
 }
 
 pub struct TelemetryCollector {
@@ -40,16 +68,30 @@ impl TelemetryCollector {
         let hwmon_path = Self::find_hwmon_path();
         let vram_path = Self::find_drm_device_path();
 
+        let vram_vendor = Self::read_vram_vendor(&vram_path);
+        let pcie_link = Self::read_pcie_link(&vram_path);
+
         let initial_stats = HardwareStats {
             gpu_name: default_gpu_name,
             gpu_clock_mhz: 0,
+            gpu_mem_clock_mhz: 0,
+            gpu_voltage_mv: 0,
             gpu_util_pct: 0.0,
+            mem_util_pct: 0.0,
             gpu_temp_c: 0.0,
             gpu_hotspot_c: 0.0,
             gpu_mem_temp_c: 0.0,
+            gpu_temp_crit_c: 0.0,
+            gpu_hotspot_crit_c: 0.0,
+            gpu_fan_rpm: 0,
+            gpu_fan_max_rpm: 0,
+            gpu_fan_pwm: 0,
             gpu_power_w: 0.0,
+            gpu_power_cap_w: 0.0,
             vram_used_mb: 0,
             vram_total_mb: 0,
+            vram_vendor: vram_vendor.clone(),
+            pcie_link: pcie_link.clone(),
             cpu_name,
             cpu_usage_pct: 0.0,
             cpu_threads,
@@ -64,6 +106,8 @@ impl TelemetryCollector {
         let stop_clone = Arc::clone(&stop_signal);
         let hwmon_clone = hwmon_path;
         let vram_clone = vram_path;
+        let vram_vendor_clone = vram_vendor;
+        let pcie_link_clone = pcie_link;
 
         let worker_handle = thread::spawn(move || {
             let mut last_cpu_total = cpu_total;
@@ -88,10 +132,11 @@ impl TelemetryCollector {
                 }
 
                 // 2. GPU hwmon
-                let (mut clock_mhz, edge_temp, hotspot_temp, mem_temp, power_w) =
-                    Self::read_gpu_hwmon(&hwmon_clone);
+                let hw = Self::read_gpu_hwmon(&hwmon_clone);
+                let mut clock_mhz = hw.clock_mhz;
+                let mut mem_clock_mhz = hw.mem_clock_mhz;
 
-                // If clock is 0 or low, check pp_dpm_sclk for active DPM clock
+                // If core clock is 0 or low, check pp_dpm_sclk for active DPM clock
                 if clock_mhz == 0 {
                     if let Some(ref drm) = vram_clone {
                         let (active_dpm, max_dpm) = Self::read_pp_dpm_sclk(drm);
@@ -100,6 +145,12 @@ impl TelemetryCollector {
                         } else if last_active_time.elapsed() < Duration::from_millis(1500) && max_dpm > 0 {
                             clock_mhz = last_active_clock.max(max_dpm);
                         }
+                    }
+                }
+
+                if mem_clock_mhz == 0 {
+                    if let Some(ref drm) = vram_clone {
+                        mem_clock_mhz = Self::read_pp_dpm_mclk(drm);
                     }
                 }
 
@@ -112,8 +163,9 @@ impl TelemetryCollector {
                     clock_mhz = last_active_clock;
                 }
 
-                // 3. GPU Utilization (Core Load %)
+                // 3. GPU Utilization & Memory Controller Utilization
                 let gpu_util = Self::read_gpu_utilization(&vram_clone);
+                let mem_util = Self::read_mem_busy_percent(&vram_clone);
                 peak_util = peak_util.max(gpu_util);
 
                 // 4. VRAM
@@ -122,13 +174,24 @@ impl TelemetryCollector {
                 // 5. Update shared stats
                 if let Ok(mut w) = stats_clone.write() {
                     w.gpu_clock_mhz = clock_mhz;
+                    w.gpu_mem_clock_mhz = mem_clock_mhz;
+                    w.gpu_voltage_mv = hw.voltage_mv;
                     w.gpu_util_pct = gpu_util;
-                    w.gpu_temp_c = edge_temp;
-                    w.gpu_hotspot_c = hotspot_temp;
-                    w.gpu_mem_temp_c = mem_temp;
-                    w.gpu_power_w = power_w;
+                    w.mem_util_pct = mem_util;
+                    w.gpu_temp_c = hw.edge_temp_c;
+                    w.gpu_hotspot_c = hw.hotspot_temp_c;
+                    w.gpu_mem_temp_c = hw.mem_temp_c;
+                    w.gpu_temp_crit_c = hw.temp_crit_c;
+                    w.gpu_hotspot_crit_c = hw.hotspot_crit_c;
+                    w.gpu_fan_rpm = hw.fan_rpm;
+                    w.gpu_fan_max_rpm = hw.fan_max_rpm;
+                    w.gpu_fan_pwm = hw.fan_pwm;
+                    w.gpu_power_w = hw.power_w;
+                    w.gpu_power_cap_w = hw.power_cap_w;
                     w.vram_used_mb = vram_used_mb;
                     w.vram_total_mb = vram_total_mb;
+                    w.vram_vendor = vram_vendor_clone.clone();
+                    w.pcie_link = pcie_link_clone.clone();
                     w.cpu_usage_pct = cpu_usage_pct;
                     w.peak_gpu_clock_mhz = peak_clock;
                     w.peak_gpu_util_pct = peak_util;
@@ -160,30 +223,65 @@ impl TelemetryCollector {
         }
     }
 
-    fn read_gpu_hwmon(hwmon_path: &Option<String>) -> (u32, f32, f32, f32, f32) {
-        let mut clock_mhz = 0;
-        let mut edge_temp_c = 0.0;
-        let mut hotspot_temp_c = 0.0;
-        let mut mem_temp_c = 0.0;
-        let mut power_w = 0.0;
+    fn read_gpu_hwmon(hwmon_path: &Option<String>) -> HwmonSensors {
+        let mut sensors = HwmonSensors::default();
 
         if let Some(path) = hwmon_path {
-            // Read GPU clock (freq1_input is in Hz for AMD)
+            // Read core clock (freq1_input is in Hz for AMD)
             if let Ok(freq_str) = fs::read_to_string(format!("{}/freq1_input", path)) {
                 if let Ok(freq_hz) = freq_str.trim().parse::<u64>() {
-                    clock_mhz = (freq_hz / 1_000_000) as u32;
+                    sensors.clock_mhz = (freq_hz / 1_000_000) as u32;
                 }
             } else if let Ok(freq_str) = fs::read_to_string(format!("{}/freq2_input", path)) {
                 if let Ok(freq_hz) = freq_str.trim().parse::<u64>() {
-                    clock_mhz = (freq_hz / 1_000_000) as u32;
+                    sensors.clock_mhz = (freq_hz / 1_000_000) as u32;
+                }
+            }
+
+            // Read memory clock
+            if let Ok(freq_str) = fs::read_to_string(format!("{}/freq2_input", path)) {
+                if let Ok(freq_hz) = freq_str.trim().parse::<u64>() {
+                    sensors.mem_clock_mhz = (freq_hz / 1_000_000) as u32;
+                }
+            }
+
+            // Read core voltage (in0_input is typically vddgfx in mV)
+            if let Ok(in0_str) = fs::read_to_string(format!("{}/in0_input", path)) {
+                if let Ok(v) = in0_str.trim().parse::<u32>() {
+                    sensors.voltage_mv = v;
+                }
+            }
+
+            // Read fan speed (fan1_input is in RPM)
+            if let Ok(fan_str) = fs::read_to_string(format!("{}/fan1_input", path)) {
+                if let Ok(rpm) = fan_str.trim().parse::<u32>() {
+                    sensors.fan_rpm = rpm;
+                }
+            }
+            if let Ok(fan_max_str) = fs::read_to_string(format!("{}/fan1_max", path)) {
+                if let Ok(max_rpm) = fan_max_str.trim().parse::<u32>() {
+                    sensors.fan_max_rpm = max_rpm;
+                }
+            }
+            if let Ok(pwm_str) = fs::read_to_string(format!("{}/pwm1", path)) {
+                if let Ok(pwm) = pwm_str.trim().parse::<u32>() {
+                    sensors.fan_pwm = pwm;
+                }
+            }
+
+            // Read critical temperature thresholds
+            if let Ok(crit_str) = fs::read_to_string(format!("{}/temp1_crit", path)) {
+                if let Ok(mc) = crit_str.trim().parse::<f32>() {
+                    sensors.temp_crit_c = mc / 1000.0;
+                }
+            }
+            if let Ok(crit_str) = fs::read_to_string(format!("{}/temp2_crit", path)) {
+                if let Ok(mc) = crit_str.trim().parse::<f32>() {
+                    sensors.hotspot_crit_c = mc / 1000.0;
                 }
             }
 
             // Read GPU temperature sensors and map by sensor label.
-            // On modern GPUs (AMD amdgpu, Intel, etc.):
-            // - "edge" / "gpu" / "package" is the primary GPU die temp displayed by btop/mangohud.
-            // - "junction" / "hotspot" is the localized hottest silicon temp (can be 20-35°C higher).
-            // - "mem" / "vram" is the video memory junction temp.
             for i in 1..=8 {
                 let input_path = format!("{}/temp{}_input", path, i);
                 if let Ok(temp_str) = fs::read_to_string(&input_path) {
@@ -201,49 +299,126 @@ impl TelemetryCollector {
                             || label.contains("composite")
                             || label.contains("die")
                         {
-                            edge_temp_c = temp_val;
+                            sensors.edge_temp_c = temp_val;
                         } else if label.contains("junction") || label.contains("hotspot") || label.contains("tctl") {
-                            hotspot_temp_c = temp_val;
+                            sensors.hotspot_temp_c = temp_val;
                         } else if label.contains("mem") || label.contains("vram") {
-                            mem_temp_c = temp_val;
-                        } else if i == 1 && edge_temp_c == 0.0 {
-                            edge_temp_c = temp_val;
-                        } else if i == 2 && hotspot_temp_c == 0.0 {
-                            hotspot_temp_c = temp_val;
-                        } else if i == 3 && mem_temp_c == 0.0 {
-                            mem_temp_c = temp_val;
+                            sensors.mem_temp_c = temp_val;
+                        } else if i == 1 && sensors.edge_temp_c == 0.0 {
+                            sensors.edge_temp_c = temp_val;
+                        } else if i == 2 && sensors.hotspot_temp_c == 0.0 {
+                            sensors.hotspot_temp_c = temp_val;
+                        } else if i == 3 && sensors.mem_temp_c == 0.0 {
+                            sensors.mem_temp_c = temp_val;
                         }
                     }
                 }
             }
 
             // Fallback: if no edge temp identified but temp1_input exists
-            if edge_temp_c == 0.0 {
+            if sensors.edge_temp_c == 0.0 {
                 if let Ok(temp_str) = fs::read_to_string(format!("{}/temp1_input", path)) {
                     if let Ok(temp_mc) = temp_str.trim().parse::<f32>() {
-                        edge_temp_c = temp_mc / 1000.0;
+                        sensors.edge_temp_c = temp_mc / 1000.0;
                     }
                 }
             }
 
             // If edge temp still not found, fallback to hotspot
-            if edge_temp_c == 0.0 && hotspot_temp_c > 0.0 {
-                edge_temp_c = hotspot_temp_c;
+            if sensors.edge_temp_c == 0.0 && sensors.hotspot_temp_c > 0.0 {
+                sensors.edge_temp_c = sensors.hotspot_temp_c;
             }
 
             // Read GPU power (power1_average in microwatts)
             if let Ok(pwr_str) = fs::read_to_string(format!("{}/power1_average", path)) {
                 if let Ok(pwr_uw) = pwr_str.trim().parse::<f32>() {
-                    power_w = pwr_uw / 1_000_000.0;
+                    sensors.power_w = pwr_uw / 1_000_000.0;
                 }
             } else if let Ok(pwr_str) = fs::read_to_string(format!("{}/power1_input", path)) {
                 if let Ok(pwr_uw) = pwr_str.trim().parse::<f32>() {
-                    power_w = pwr_uw / 1_000_000.0;
+                    sensors.power_w = pwr_uw / 1_000_000.0;
+                }
+            }
+
+            // Read GPU power cap / limit
+            if let Ok(cap_str) = fs::read_to_string(format!("{}/power1_cap", path)) {
+                if let Ok(cap_uw) = cap_str.trim().parse::<f32>() {
+                    sensors.power_cap_w = cap_uw / 1_000_000.0;
                 }
             }
         }
 
-        (clock_mhz, edge_temp_c, hotspot_temp_c, mem_temp_c, power_w)
+        sensors
+    }
+
+    fn read_pp_dpm_mclk(drm_path: &str) -> u32 {
+        let path = format!("{}/pp_dpm_mclk", drm_path);
+        if let Ok(content) = fs::read_to_string(&path) {
+            for line in content.lines() {
+                if line.contains('*') {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        let clk_str = parts[1].replace("Mhz", "").replace("MHz", "");
+                        if let Ok(c) = clk_str.parse::<u32>() {
+                            return c;
+                        }
+                    }
+                }
+            }
+        }
+        0
+    }
+
+    fn read_mem_busy_percent(drm_path: &Option<String>) -> f32 {
+        if let Some(path) = drm_path {
+            if let Ok(content) = fs::read_to_string(format!("{}/mem_busy_percent", path)) {
+                if let Ok(pct) = content.trim().parse::<f32>() {
+                    return pct.clamp(0.0, 100.0);
+                }
+            }
+        }
+        0.0
+    }
+
+    fn read_vram_vendor(drm_path: &Option<String>) -> String {
+        if let Some(path) = drm_path {
+            if let Ok(vendor) = fs::read_to_string(format!("{}/mem_info_vram_vendor", path)) {
+                let trimmed = vendor.trim();
+                if !trimmed.is_empty() {
+                    return match trimmed.to_lowercase().as_str() {
+                        "samsung" => "Samsung GDDR6".to_string(),
+                        "micron" => "Micron GDDR6".to_string(),
+                        "hynix" | "skhynix" => "SK Hynix GDDR6".to_string(),
+                        other => other.to_uppercase(),
+                    };
+                }
+            }
+        }
+        String::new()
+    }
+
+    fn read_pcie_link(drm_path: &Option<String>) -> String {
+        if let Some(path) = drm_path {
+            if let Ok(content) = fs::read_to_string(format!("{}/pp_dpm_pcie", path)) {
+                for line in content.lines() {
+                    if line.contains('*') {
+                        let cleaned = line.replace('*', "");
+                        let parts: Vec<&str> = cleaned.split_whitespace().collect();
+                        for (i, &p) in parts.iter().enumerate() {
+                            if p.to_lowercase().contains("gt/s") {
+                                let speed = p.trim_end_matches(',');
+                                if i + 1 < parts.len() {
+                                    return format!("PCIe {} ({})", speed, parts[i + 1]);
+                                }
+                                return format!("PCIe {}", speed);
+                            }
+                        }
+                        return cleaned.trim().to_string();
+                    }
+                }
+            }
+        }
+        String::new()
     }
 
     fn read_pp_dpm_sclk(drm_path: &str) -> (u32, u32) {

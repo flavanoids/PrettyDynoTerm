@@ -392,6 +392,8 @@ fn test_benchmark_suite() -> TestReport {
         peak_gpu_clock_mhz: 2500,
         peak_vram_mb: 4096,
         scene_results: vec![res],
+        gpu_telemetry: None,
+        telemetry_samples: vec![],
     };
 
     match serde_json::to_string(&report) {

@@ -1039,17 +1039,69 @@ impl CliMenu {
             format!("\x1b[38;2;140;150;170mGPU Device         : \x1b[38;2;255;255;255;1m{}\x1b[0m", adapter_info.name),
             format!("\x1b[38;2;140;150;170mDriver & Backend   : \x1b[38;2;0;255;200m{} ({:?})\x1b[0m", adapter_info.driver, adapter_info.backend),
             format!("\x1b[38;2;140;150;170mAdapter Type       : \x1b[38;2;255;180;0m{:?}\x1b[0m", adapter_info.device_type),
-            format!("\x1b[38;2;140;150;170mGPU Utilization    : \x1b[38;2;0;255;200;1m{:.1} %\x1b[38;2;140;150;170m (Peak: {:.1} %)\x1b[0m", stats.gpu_util_pct, stats.peak_gpu_util_pct),
-            format!("\x1b[38;2;140;150;170mGPU Temperature    : \x1b[38;2;0;255;200;1m{:.1} °C\x1b[38;2;140;150;170m (Standard Package Temp)\x1b[0m", stats.gpu_temp_c),
         ];
+
+        if !stats.vram_vendor.is_empty() {
+            items.push(format!("\x1b[38;2;140;150;170mVRAM Architecture  : \x1b[38;2;255;255;255;1m{}\x1b[0m", stats.vram_vendor));
+        }
+        if !stats.pcie_link.is_empty() {
+            items.push(format!("\x1b[38;2;140;150;170mPCIe Bus Interface : \x1b[38;2;0;255;200;1m{}\x1b[0m", stats.pcie_link));
+        }
+
+        items.push(format!("\x1b[38;2;140;150;170mGPU Utilization    : \x1b[38;2;0;255;200;1m{:.1} %\x1b[38;2;140;150;170m (Peak: {:.1} %)\x1b[0m", stats.gpu_util_pct, stats.peak_gpu_util_pct));
+
+        if stats.mem_util_pct > 0.0 || stats.gpu_mem_clock_mhz > 0 {
+            let mem_clk_str = if stats.gpu_mem_clock_mhz > 0 {
+                format!("{} MHz", stats.gpu_mem_clock_mhz)
+            } else {
+                "Auto".to_string()
+            };
+            items.push(format!(
+                "\x1b[38;2;140;150;170mMemory Controller  : \x1b[38;2;0;220;255;1m{}\x1b[38;2;140;150;170m (Bus Load: \x1b[38;2;255;180;0;1m{:.1} %\x1b[38;2;140;150;170m)\x1b[0m",
+                mem_clk_str, stats.mem_util_pct
+            ));
+        }
+
+        items.push(format!("\x1b[38;2;140;150;170mGPU Core Clock     : \x1b[38;2;0;220;255;1m{} MHz\x1b[38;2;140;150;170m (Peak: {} MHz)\x1b[0m", stats.gpu_clock_mhz, stats.peak_gpu_clock_mhz));
+
+        if stats.gpu_voltage_mv > 0 {
+            items.push(format!("\x1b[38;2;140;150;170mGPU Core Voltage   : \x1b[38;2;255;255;255;1m{} mV\x1b[38;2;140;150;170m (Vddgfx Telemetry)\x1b[0m", stats.gpu_voltage_mv));
+        }
+
+        items.push(format!("\x1b[38;2;140;150;170mGPU Temperature    : \x1b[38;2;0;255;200;1m{:.1} °C\x1b[38;2;140;150;170m (Standard Package Temp)\x1b[0m", stats.gpu_temp_c));
+
         if stats.gpu_hotspot_c > 0.0 {
-            items.push(format!("\x1b[38;2;140;150;170mGPU Hotspot (Jct)  : \x1b[38;2;255;180;0;1m{:.1} °C\x1b[38;2;140;150;170m (Internal Junction Peak)\x1b[0m", stats.gpu_hotspot_c));
+            let delta = (stats.gpu_hotspot_c - stats.gpu_temp_c).max(0.0);
+            items.push(format!(
+                "\x1b[38;2;140;150;170mGPU Hotspot (Jct)  : \x1b[38;2;255;180;0;1m{:.1} °C\x1b[38;2;140;150;170m (ΔJ-E: \x1b[38;2;255;255;255;1m{:.1} °C\x1b[38;2;140;150;170m)\x1b[0m",
+                stats.gpu_hotspot_c, delta
+            ));
         }
         if stats.gpu_mem_temp_c > 0.0 {
             items.push(format!("\x1b[38;2;140;150;170mGPU Memory Temp    : \x1b[38;2;0;255;200;1m{:.1} °C\x1b[38;2;140;150;170m (VRAM IC Sensors)\x1b[0m", stats.gpu_mem_temp_c));
         }
-        items.push(format!("\x1b[38;2;140;150;170mGPU Power Draw     : \x1b[38;2;255;180;0;1m{:.1} W\x1b[38;2;140;150;170m (Board PPT)\x1b[0m", stats.gpu_power_w));
-        items.push(format!("\x1b[38;2;140;150;170mGPU Core Clock     : \x1b[38;2;0;220;255;1m{} MHz\x1b[38;2;140;150;170m (Peak: {} MHz)\x1b[0m", stats.gpu_clock_mhz, stats.peak_gpu_clock_mhz));
+
+        if stats.gpu_hotspot_crit_c > 0.0 {
+            items.push(format!(
+                "\x1b[38;2;140;150;170mThermal Throttle   : \x1b[38;2;255;60;60;1m{:.0} °C Crit\x1b[38;2;140;150;170m (Headroom: \x1b[38;2;0;255;200;1m{:.1} °C\x1b[38;2;140;150;170m)\x1b[0m",
+                stats.gpu_hotspot_crit_c, (stats.gpu_hotspot_crit_c - stats.gpu_hotspot_c).max(0.0)
+            ));
+        }
+
+        let fan_str = if stats.gpu_fan_rpm > 0 {
+            let pwm_pct = (stats.gpu_fan_pwm as f32 / 255.0) * 100.0;
+            format!("{} RPM ({:.0} % PWM)", stats.gpu_fan_rpm, pwm_pct)
+        } else {
+            "0 RPM (Zero-RPM Idle Mode)".to_string()
+        };
+        items.push(format!("\x1b[38;2;140;150;170mCooling Fan Speed  : \x1b[38;2;255;255;255;1m{}\x1b[0m", fan_str));
+
+        let pwr_cap_str = if stats.gpu_power_cap_w > 0.0 {
+            format!(" (PPT Limit: {:.0} W)", stats.gpu_power_cap_w)
+        } else {
+            " (Board PPT)".to_string()
+        };
+        items.push(format!("\x1b[38;2;140;150;170mGPU Power Draw     : \x1b[38;2;255;180;0;1m{:.1} W\x1b[38;2;140;150;170m{}\x1b[0m", stats.gpu_power_w, pwr_cap_str));
         items.push(format!("\x1b[38;2;140;150;170mVRAM Allocation    : \x1b[38;2;0;255;200m{} MB / {} MB\x1b[0m", stats.vram_used_mb, stats.vram_total_mb));
         items.push(format!("\x1b[38;2;140;150;170mCPU Processor      : \x1b[38;2;255;255;255;1m{}\x1b[0m", stats.cpu_name));
         items.push(format!("\x1b[38;2;140;150;170mCPU Parallelism    : \x1b[38;2;0;255;200m{} Hardware Threads\x1b[0m", stats.cpu_threads));

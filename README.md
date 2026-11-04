@@ -69,14 +69,16 @@ Lattice Boltzmann Method (LBM D2Q9) incompressible Navier-Stokes simulation eval
 - **High-Performance 4K UHD Offscreen Compute**:
   - Defaults to computing at **3840×2160 (4K UHD)**—computing over **8.29 million pixels** per frame!
   - VRAM-native GPU compute downsampling to your terminal character grid using UTF-8 half-blocks (`▀`), providing extreme supersampling anti-aliasing (SSAA).
-- **Cybernetic Telemetry HUD**:
-  - Live GPU core clock (MHz), junction temperature (°C), board power (Watts), and VRAM utilization.
+- **Cybernetic Telemetry HUD & Automated Hardware Assessment Engine**:
+  - Live GPU core clock (MHz), memory clock (MHz), core voltage ($V_{\text{core}}$ in mV), junction temperature (°C), board power (Watts), and VRAM utilization.
   - Real-time CPU multi-core utilization sparkline and thread count.
   - Frametime analysis with instantaneous FPS, average frametime, and 1% lows.
+  - **Automated GPU Sensor & Thermal Health Assessment**: Post-benchmark evaluation calculating die coupling delta ($\Delta T_{\text{hotspot}} = T_{\text{hotspot}} - T_{\text{edge}}$), thermal headroom to critical throttling limit ($T_{\text{crit}}$), acoustic fan RPM/PWM profiles, cooling efficiency ratings, and power limit checks.
+  - Continuous time-series sensor collection exported in structured JSON logs (`dyno_benchmark_results.json` and `dyno_consistency_results.json`).
 - **Deterministic Finite Benchmark**:
   - Fixed-workload execution (not an imprecise timed run).
   - Standardized score badge strictly comparable across systems.
-  - Outputs detailed telemetry JSON logs (`dyno_benchmark_results.json`).
+  - Comprehensive ANSI scorecard report featuring the automated GPU telemetry assessment block.
 
 <p align="center">
   <img src="assets/screenshots/scorecard.png" alt="PrettyDynoTerm Official Benchmark Scorecard" width="780" />

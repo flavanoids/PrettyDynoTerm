@@ -81,6 +81,8 @@ pub struct ConsistencyReport {
     pub peak_clock_stats: StatSummary,
     pub peak_power_stats: StatSummary,
     pub scene_stats: Vec<SceneConsistencyStats>,
+    #[serde(default)]
+    pub gpu_telemetry: Option<super::telemetry::GpuTelemetryAssessment>,
     pub runs: Vec<BenchmarkReport>,
 }
 
@@ -112,6 +114,7 @@ pub fn compute_consistency_report(
             peak_clock_stats: StatSummary::calculate(&[]),
             peak_power_stats: StatSummary::calculate(&[]),
             scene_stats: Vec::new(),
+            gpu_telemetry: None,
             runs: Vec::new(),
         };
     }
@@ -157,6 +160,94 @@ pub fn compute_consistency_report(
         });
     }
 
+    // Evaluate aggregate GPU telemetry across all iterations
+    let all_snapshots: Vec<super::telemetry::TelemetrySnapshot> = runs
+        .iter()
+        .flat_map(|r| r.telemetry_samples.clone())
+        .collect();
+
+    let gpu_telemetry = if !all_snapshots.is_empty() {
+        if let Some(last_run) = runs.last() {
+            let stats = crate::telemetry::HardwareStats {
+                gpu_name: last_run.system_info.gpu_name.clone(),
+                gpu_clock_mhz: last_run.peak_gpu_clock_mhz,
+                gpu_mem_clock_mhz: last_run
+                    .gpu_telemetry
+                    .as_ref()
+                    .map(|t| t.mem_clock_mhz.max as u32)
+                    .unwrap_or(0),
+                gpu_voltage_mv: last_run
+                    .gpu_telemetry
+                    .as_ref()
+                    .map(|t| t.core_voltage_mv.max as u32)
+                    .unwrap_or(0),
+                gpu_util_pct: last_run.peak_gpu_util_pct,
+                mem_util_pct: last_run
+                    .gpu_telemetry
+                    .as_ref()
+                    .map(|t| t.mem_util_pct.max)
+                    .unwrap_or(0.0),
+                gpu_temp_c: last_run.peak_gpu_temp_c,
+                gpu_hotspot_c: last_run.peak_gpu_hotspot_c,
+                gpu_mem_temp_c: last_run
+                    .gpu_telemetry
+                    .as_ref()
+                    .and_then(|t| t.mem_temp_c.as_ref())
+                    .map(|m| m.max)
+                    .unwrap_or(0.0),
+                gpu_temp_crit_c: last_run
+                    .gpu_telemetry
+                    .as_ref()
+                    .map(|t| t.temp_crit_c)
+                    .unwrap_or(0.0),
+                gpu_hotspot_crit_c: last_run
+                    .gpu_telemetry
+                    .as_ref()
+                    .map(|t| t.hotspot_crit_c)
+                    .unwrap_or(0.0),
+                gpu_fan_rpm: last_run
+                    .gpu_telemetry
+                    .as_ref()
+                    .map(|t| t.fan_rpm.max as u32)
+                    .unwrap_or(0),
+                gpu_fan_max_rpm: 0,
+                gpu_fan_pwm: last_run
+                    .gpu_telemetry
+                    .as_ref()
+                    .map(|t| ((t.peak_fan_pwm_pct / 100.0) * 255.0) as u32)
+                    .unwrap_or(0),
+                gpu_power_w: last_run.peak_gpu_power_w,
+                gpu_power_cap_w: last_run
+                    .gpu_telemetry
+                    .as_ref()
+                    .map(|t| t.power_cap_w)
+                    .unwrap_or(0.0),
+                vram_used_mb: last_run.peak_vram_mb,
+                vram_total_mb: 0,
+                vram_vendor: last_run
+                    .gpu_telemetry
+                    .as_ref()
+                    .map(|t| t.vram_vendor.clone())
+                    .unwrap_or_default(),
+                pcie_link: last_run
+                    .gpu_telemetry
+                    .as_ref()
+                    .map(|t| t.pcie_link.clone())
+                    .unwrap_or_default(),
+                cpu_name: last_run.system_info.cpu_name.clone(),
+                cpu_usage_pct: 0.0,
+                cpu_threads: last_run.system_info.cpu_threads,
+                peak_gpu_clock_mhz: last_run.peak_gpu_clock_mhz,
+                peak_gpu_util_pct: last_run.peak_gpu_util_pct,
+            };
+            Some(super::telemetry::GpuTelemetryAssessment::evaluate(&all_snapshots, &stats))
+        } else {
+            None
+        }
+    } else {
+        runs.last().and_then(|r| r.gpu_telemetry.clone())
+    };
+
     ConsistencyReport {
         timestamp: first.timestamp.clone(),
         system_info: first.system_info.clone(),
@@ -171,6 +262,7 @@ pub fn compute_consistency_report(
         peak_clock_stats,
         peak_power_stats,
         scene_stats,
+        gpu_telemetry,
         runs: runs.to_vec(),
     }
 }
@@ -306,6 +398,9 @@ pub fn format_consistency_scorecard(report: &ConsistencyReport) -> String {
         thermal_summary,
         " ".repeat(pad_len)
     ));
+    if let Some(ref assessment) = report.gpu_telemetry {
+        out.push_str(&super::telemetry::format_gpu_assessment_box(assessment));
+    }
     out.push_str("\x1b[38;2;0;220;255;1m└──────────────────────────────────────────────────────────────────────────┘\x1b[0m\n");
 
     out
@@ -419,6 +514,8 @@ mod tests {
             peak_gpu_clock_mhz: 2700,
             peak_vram_mb: 4000,
             scene_results: vec![scene1.clone()],
+            gpu_telemetry: None,
+            telemetry_samples: vec![],
         };
 
         let mut run2 = run1.clone();
