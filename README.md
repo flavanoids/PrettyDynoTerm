@@ -11,7 +11,8 @@
 
 ## Benchmark Acts & Mathematical Models
 
-> **Deep Technical Documentation**: For complete mathematical formulations, partial differential equations, WGSL compute dispatch mechanics, input/output specifications, and scientific use cases for every scene, see **[docs/SHADERS_AND_SCENES.md](docs/SHADERS_AND_SCENES.md)**.
+> **Deep Technical Documentation**: For complete mathematical formulations, partial differential equations, WGSL compute dispatch mechanics, input/output specifications, and scientific use cases for every scene, see **[docs/SHADERS_AND_SCENES.md](docs/SHADERS_AND_SCENES.md)**.  
+> **Engineering Standard**: For contributing new benchmark scenes or tests, see the mandatory 7-stage specification pipeline in **[docs/SCENE_SPECIFICATION_STANDARD.md](docs/SCENE_SPECIFICATION_STANDARD.md)**.
 
 ### Act I: Atmospheric Ocean Waves (GPU)
 14 Gerstner wave octaves, trochoidal crests, 48-step adiabatic cumulus cloud deck, Clausius-Clapeyron saturation vapor thermodynamics, and Henyey-Greenstein Mie radiative transfer.

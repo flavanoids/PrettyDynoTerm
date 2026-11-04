@@ -87,4 +87,4 @@ To guarantee hardware stability and deterministic benchmark scoring across diver
    - 35 automated unit and integration tests covering unit logic (`src/lib.rs`), CLI parsing (`tests/cli_tests.rs`), and GPU context execution (`tests/pipeline_integration.rs`).
    - Run in one step via `./scripts/run_tests.sh`.
 
-See [docs/TESTING.md](TESTING.md) for full testing documentation and [docs/SHADERS_AND_SCENES.md](SHADERS_AND_SCENES.md) for complete mathematical formulations, WGSL compute mechanics, and scientific use cases.
+See [docs/TESTING.md](TESTING.md) for full testing documentation, [docs/SHADERS_AND_SCENES.md](SHADERS_AND_SCENES.md) for complete mathematical formulations, and [docs/SCENE_SPECIFICATION_STANDARD.md](SCENE_SPECIFICATION_STANDARD.md) for the mandatory engineering pipeline for contributing new acts and tests.

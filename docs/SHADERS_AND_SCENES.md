@@ -4,6 +4,8 @@
 
 This document provides an exhaustive technical reference for every scene: the mathematical formulations and discretization, how the hardware compute pipeline and automation scripts execute them, input parameters and expected outputs, software design and architecture, real-world industry use cases, and hardware bottleneck profiling.
 
+> **Engineering Standard**: All new scenes, compute shaders, and CPU physics tests must adhere to the mandatory 7-stage engineering and documentation pipeline defined in **[docs/SCENE_SPECIFICATION_STANDARD.md](SCENE_SPECIFICATION_STANDARD.md)**.
+
 ---
 
 ## Table of Contents
