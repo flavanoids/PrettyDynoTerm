@@ -11,6 +11,8 @@
 
 ## Benchmark Acts & Mathematical Models
 
+> **Deep Technical Documentation**: For complete mathematical formulations, partial differential equations, WGSL compute dispatch mechanics, input/output specifications, and scientific use cases for every scene, see **[docs/SHADERS_AND_SCENES.md](docs/SHADERS_AND_SCENES.md)**.
+
 ### Act I: Atmospheric Ocean Waves (GPU)
 14 Gerstner wave octaves, trochoidal crests, 48-step adiabatic cumulus cloud deck, Clausius-Clapeyron saturation vapor thermodynamics, and Henyey-Greenstein Mie radiative transfer.
 <p align="center">
