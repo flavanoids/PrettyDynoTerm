@@ -1,10 +1,15 @@
 pub mod consistency;
+pub mod failsafe;
 pub mod history;
 pub mod telemetry;
 pub use consistency::{
     compute_consistency_report, format_consistency_scorecard, load_consistency_report,
     save_consistency_report, ConsistencyReport, SceneConsistencyStats, StatSummary,
     DEFAULT_CONSISTENCY_FILE,
+};
+pub use failsafe::{
+    format_emergency_box, format_emergency_line, print_emergency_thermal_box, ThermalFailsafe,
+    ThermalTripReport, VramHeadroomCheck,
 };
 pub use history::{
     append_to_history, compare_reports, format_comparison_table, format_history_table,

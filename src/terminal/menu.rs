@@ -44,6 +44,9 @@ pub struct MenuConfig {
     pub output_path: String,
     pub consistency_iterations: usize,
     pub cooldown_seconds: u64,
+    pub max_temp_c: f32,
+    pub target_temp_c: f32,
+    pub failsafe_enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1143,6 +1146,15 @@ impl CliMenu {
         self.buf.push_str(&format_telemetry_metric("Framerate Mode", mode_val));
         self.buf.push_str("\r\n");
 
+        let failsafe_val = if config.failsafe_enabled {
+            format!("\x1b[38;2;0;255;200;1mActive\x1b[0m \x1b[38;2;140;150;170m(Ceiling: {:.0}°C, Cooldown: {:.0}°C)\x1b[0m", config.max_temp_c, config.target_temp_c)
+        } else {
+            "\x1b[38;2;255;60;60;1mDisabled (No Tripwire)\x1b[0m".to_string()
+        };
+        self.buf.push_str(pad);
+        self.buf.push_str(&format_telemetry_metric("Thermal Tripwire", &failsafe_val));
+        self.buf.push_str("\r\n");
+
         self.buf.push_str(pad);
         self.buf.push_str("\x1b[38;2;0;220;255m├──────────────────────────────────────────────────────────────────────────┤\x1b[0m\r\n");
 
@@ -1474,6 +1486,9 @@ mod tests {
             output_path: "reports/benchmark.json".to_string(),
             consistency_iterations: 5,
             cooldown_seconds: 60,
+            max_temp_c: 105.0,
+            target_temp_c: 55.0,
+            failsafe_enabled: true,
         };
         let telemetry = TelemetryCollector::new("NVIDIA GeForce RTX 4090".to_string());
         let adapter_info = GpuAdapterInfo {

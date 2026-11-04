@@ -53,3 +53,39 @@ fn test_gpu_context_and_compute_dispatch() {
         "GPU compute pass should write non-zero pixel data to preview buffer"
     );
 }
+
+#[test]
+fn test_vram_headroom_guard_rejection() {
+    let adapters = GpuContext::list_adapters();
+    if adapters.is_empty() {
+        println!("Skipping GPU test: no compatible GPU adapter found");
+        return;
+    }
+
+    let gpu_ctx = match pollster::block_on(GpuContext::new(None)) {
+        Ok(ctx) => ctx,
+        Err(e) => {
+            println!("Skipping GPU test: failed to initialize device ({})", e);
+            return;
+        }
+    };
+
+    // An impossibly large resolution (65536 x 65536 = 17.1 GB single buffer)
+    let err = ComputePipelineManager::new(
+        Arc::clone(&gpu_ctx.device),
+        Arc::clone(&gpu_ctx.queue),
+        UNIFIED_SHADER,
+        65536,
+        65536,
+    );
+    assert!(
+        err.is_err(),
+        "Extreme buffer allocation should be rejected safely by pre-flight guard before allocation"
+    );
+    let err_msg = err.err().unwrap();
+    assert!(
+        err_msg.contains("exceeding GPU hardware limit") || err_msg.contains("storage binding"),
+        "Error message should explain buffer limit breach, got: {}",
+        err_msg
+    );
+}

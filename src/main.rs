@@ -109,16 +109,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Canonical internal compute resolution: Defaults to 4K UHD (3840x2160) for balanced high-performance GPU compute
     let (compute_w, compute_h) = parse_resolution(&args.res, term_width, term_pixel_height);
 
-    let res_tag = format_resolution_tag(compute_w, compute_h);
+    let mut res_tag = format_resolution_tag(compute_w, compute_h);
 
-    // Initialize Compute Pipeline with chosen compute resolution
-    let mut pipeline = ComputePipelineManager::new(
+    // Initialize Compute Pipeline with chosen compute resolution (with pre-flight limit guard & fallback)
+    let mut pipeline = match ComputePipelineManager::new(
         Arc::clone(&device),
         Arc::clone(&queue),
         shaders::UNIFIED_SHADER,
         compute_w,
         compute_h,
-    )?;
+    ) {
+        Ok(p) => p,
+        Err(err) => {
+            eprintln!("\x1b[38;2;255;100;100;1m⚠ Resolution {}x{} exceeds hardware limits:\x1b[0m {}", compute_w, compute_h, err);
+            eprintln!("\x1b[38;2;0;255;200;1m▶ Falling back safely to 4K UHD (3840x2160) preset...\x1b[0m");
+            let fallback_p = ComputePipelineManager::new(
+                Arc::clone(&device),
+                Arc::clone(&queue),
+                shaders::UNIFIED_SHADER,
+                3840,
+                2160,
+            ).map_err(|e| format!("Failed to create fallback pipeline: {}", e))?;
+            res_tag = format_resolution_tag(fallback_p.width, fallback_p.height);
+            fallback_p
+        }
+    };
 
     // Initialize Telemetry & Renderer
     let telemetry = TelemetryCollector::new(adapter_info.name.clone());
@@ -133,8 +148,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let all_adapters = GpuContext::list_adapters();
         let mut config = MenuConfig {
             resolution_name: res_tag.clone(),
-            compute_width: compute_w,
-            compute_height: compute_h,
+            compute_width: pipeline.width,
+            compute_height: pipeline.height,
             frames_per_scene: args.frames,
             selected_scene: args.scene,
             uncapped: args.uncapped,
@@ -142,6 +157,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             output_path: args.output.clone(),
             consistency_iterations: 5,
             cooldown_seconds: args.cooldown,
+            max_temp_c: args.max_temp,
+            target_temp_c: args.target_temp,
+            failsafe_enabled: !args.no_failsafe,
         };
 
         let mut menu = CliMenu::new();
@@ -163,6 +181,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &cur_res_tag,
                         config.selected_scene,
                         config.uncapped,
+                        config.max_temp_c,
+                        config.failsafe_enabled,
                     )?;
                 }
                 MenuAction::LaunchUncapped => {
@@ -177,6 +197,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &cur_res_tag,
                         config.selected_scene,
                         true,
+                        config.max_temp_c,
+                        config.failsafe_enabled,
                     )?;
                 }
                 MenuAction::RunBenchmark => {
@@ -191,6 +213,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         cur_term_h,
                         &cur_res_tag,
                         &config.output_path,
+                        config.max_temp_c,
+                        config.failsafe_enabled,
                     )?;
                     println!("\r\n\x1b[38;2;0;255;200;1m▶ Benchmark finished. Press [Enter] or [Space] to return to Main Menu...\x1b[0m");
                     use std::io::Write;
@@ -211,6 +235,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &adapter_info,
                         config.consistency_iterations,
                         config.cooldown_seconds,
+                        config.target_temp_c,
+                        config.max_temp_c,
+                        config.failsafe_enabled,
                         config.frames_per_scene,
                         cur_term_w,
                         cur_term_h,
@@ -223,14 +250,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     wait_for_menu_return()?;
                 }
                 MenuAction::RecreatePipeline => {
-                    config.resolution_name = format_resolution_tag(config.compute_width, config.compute_height);
-                    pipeline = ComputePipelineManager::new(
+                    let prev_w = pipeline.width;
+                    let prev_h = pipeline.height;
+                    match ComputePipelineManager::new(
                         Arc::clone(&device),
                         Arc::clone(&queue),
                         shaders::UNIFIED_SHADER,
                         config.compute_width,
                         config.compute_height,
-                    )?;
+                    ) {
+                        Ok(new_p) => {
+                            config.resolution_name = format_resolution_tag(config.compute_width, config.compute_height);
+                            pipeline = new_p;
+                        }
+                        Err(err) => {
+                            eprintln!("\r\n\x1b[38;2;255;100;100;1m⚠ Hardware Buffer Limit Exceeded: {}\x1b[0m", err);
+                            eprintln!("\x1b[38;2;255;180;0;1m▶ Reverting safely to previous resolution ({}x{})...\x1b[0m", prev_w, prev_h);
+                            std::thread::sleep(std::time::Duration::from_millis(2000));
+                            config.compute_width = prev_w;
+                            config.compute_height = prev_h;
+                            config.resolution_name = format_resolution_tag(prev_w, prev_h);
+                        }
+                    }
                 }
                 MenuAction::SwitchGpu(idx) => {
                     config.selected_gpu_index = idx;
@@ -240,13 +281,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     queue = Arc::clone(&gpu_ctx.queue);
                     adapter_info = gpu_ctx.adapter_info.clone();
                     config.resolution_name = format_resolution_tag(config.compute_width, config.compute_height);
-                    pipeline = ComputePipelineManager::new(
+                    match ComputePipelineManager::new(
                         Arc::clone(&device),
                         Arc::clone(&queue),
                         shaders::UNIFIED_SHADER,
                         config.compute_width,
                         config.compute_height,
-                    )?;
+                    ) {
+                        Ok(new_p) => {
+                            pipeline = new_p;
+                        }
+                        Err(err) => {
+                            eprintln!("\r\n\x1b[38;2;255;100;100;1m⚠ Resolution {}x{} exceeds limits on adapter {}: {}\x1b[0m", config.compute_width, config.compute_height, adapter_info.name, err);
+                            eprintln!("\x1b[38;2;0;255;200;1m▶ Falling back to 1080p FHD safe preset...\x1b[0m");
+                            std::thread::sleep(std::time::Duration::from_millis(2000));
+                            config.compute_width = 1920;
+                            config.compute_height = 1080;
+                            config.resolution_name = format_resolution_tag(1920, 1080);
+                            pipeline = ComputePipelineManager::new(
+                                Arc::clone(&device),
+                                Arc::clone(&queue),
+                                shaders::UNIFIED_SHADER,
+                                1920,
+                                1080,
+                            )?;
+                        }
+                    }
                 }
                 MenuAction::Exit => {
                     break;
@@ -266,6 +326,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &adapter_info,
             iterations,
             args.cooldown,
+            args.target_temp,
+            args.max_temp,
+            !args.no_failsafe,
             args.frames,
             term_width as usize,
             term_pixel_height as usize,
@@ -283,6 +346,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             term_pixel_height as usize,
             &res_tag,
             &args.output,
+            args.max_temp,
+            !args.no_failsafe,
         )?;
     } else {
         run_interactive_demo(
@@ -295,6 +360,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &res_tag,
             args.scene,
             args.uncapped,
+            args.max_temp,
+            !args.no_failsafe,
         )?;
     }
 
@@ -330,6 +397,8 @@ fn run_interactive_demo(
     res_tag: &str,
     initial_scene: u32,
     initial_uncapped: bool,
+    max_temp_c: f32,
+    failsafe_enabled: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     renderer.enter_alternate_screen()?;
     crossterm::terminal::enable_raw_mode()?;
@@ -347,6 +416,7 @@ fn run_interactive_demo(
 
     let mut scene_id = initial_scene % 8;
     let mut uncapped = initial_uncapped;
+    let mut failsafe = dyno_term::benchmark::ThermalFailsafe::new(max_temp_c, failsafe_enabled);
     let mut hud = Hud::new(term_width, scene_names[scene_id as usize].to_string());
     hud.resolution_label = res_tag.to_string();
     hud.math_model = get_scene_math_model(scene_id).to_string();
@@ -450,6 +520,23 @@ fn run_interactive_demo(
         }
 
         let stats = telemetry.sample(&adapter_info.name);
+
+        // In-flight active emergency thermal tripwire check
+        if let Some(trip) = failsafe.check(&stats) {
+            if uncapped {
+                // Tripwire breach under uncapped stress: disengage uncapped mode immediately to allow thermal recovery
+                uncapped = false;
+                hud.is_uncapped = false;
+            } else {
+                // Tripwire hit even while running capped at 60 FPS: emergency shutdown to protect silicon
+                crossterm::terminal::disable_raw_mode()?;
+                let _ = renderer.leave_alternate_screen();
+                dyno_term::benchmark::print_emergency_thermal_box(&trip);
+                eprintln!("\x1b[38;2;255;180;0;1m[!] Interactive demo terminated to protect hardware silicon from thermal exhaustion.\x1b[0m\r\n");
+                return Ok(());
+            }
+        }
+
         let render_dur = frame_start.elapsed();
 
         if should_draw_terminal {
@@ -490,6 +577,13 @@ fn run_interactive_demo(
     Ok(())
 }
 
+#[derive(Debug, Clone)]
+pub enum BenchmarkPassResult {
+    Completed(BenchmarkReport),
+    AbortedByUser,
+    ThermalTrip(dyno_term::benchmark::ThermalTripReport),
+}
+
 fn execute_benchmark_pass(
     pipeline: &mut ComputePipelineManager,
     renderer: &mut TerminalRenderer,
@@ -500,7 +594,9 @@ fn execute_benchmark_pass(
     term_height: usize,
     res_tag: &str,
     iteration_info: Option<(usize, usize)>,
-) -> Result<Option<BenchmarkReport>, Box<dyn std::error::Error>> {
+    max_temp_c: f32,
+    failsafe_enabled: bool,
+) -> Result<BenchmarkPassResult, Box<dyn std::error::Error>> {
     let scene_names = [
         "ATMOSPHERIC OCEAN WAVES (GPU)",
         "THE MANDELBULB CORE (GPU)",
@@ -512,6 +608,7 @@ fn execute_benchmark_pass(
         "KINETIC N-BODY SUPERNOVA (CPU)",
     ];
 
+    let mut failsafe = dyno_term::benchmark::ThermalFailsafe::new(max_temp_c, failsafe_enabled);
     let mut scorer = BenchmarkScorer::new();
     let mut scene_results = Vec::new();
     let total_benchmark_start = Instant::now();
@@ -542,7 +639,7 @@ fn execute_benchmark_pass(
                 if let Event::Key(key) = event::read()? {
                     match key.code {
                         KeyCode::Char('q') | KeyCode::Esc => {
-                            return Ok(None);
+                            return Ok(BenchmarkPassResult::AbortedByUser);
                         }
                         KeyCode::Char('h') | KeyCode::Char('H') => {
                             hud.toggle_mode();
@@ -586,6 +683,12 @@ fn execute_benchmark_pass(
                 let frame_dur = frame_start.elapsed();
 
                 let stats = telemetry.sample(&adapter_info.name);
+
+                // Real-time thermal tripwire guard
+                if let Some(trip) = failsafe.check(&stats) {
+                    return Ok(BenchmarkPassResult::ThermalTrip(trip));
+                }
+
                 scorer.record_frame_with_stats(frame_dur, scene_id, &stats);
 
                 if should_draw_terminal {
@@ -614,6 +717,12 @@ fn execute_benchmark_pass(
                 let frame_dur = frame_start.elapsed();
 
                 let stats = telemetry.sample(&adapter_info.name);
+
+                // Real-time thermal tripwire guard
+                if let Some(trip) = failsafe.check(&stats) {
+                    return Ok(BenchmarkPassResult::ThermalTrip(trip));
+                }
+
                 scorer.record_frame_with_stats(frame_dur, scene_id, &stats);
 
                 if should_draw_terminal {
@@ -687,14 +796,14 @@ fn execute_benchmark_pass(
         telemetry_samples: scorer.snapshots.clone(),
     };
 
-    Ok(Some(report))
+    Ok(BenchmarkPassResult::Completed(report))
 }
 
 fn format_box_line(content: &str, inner_width: usize) -> String {
     let vis = visible_len(content);
     let pad = inner_width.saturating_sub(vis);
     format!(
-        "\x1b[38;2;140;150;170m│ \x1b[38;2;255;255;255m{}{}\x1b[38;2;0;220;255m│\r\n",
+        "\x1b[38;2;0;220;255m│\x1b[0m \x1b[38;2;255;255;255m{}{}\x1b[0m \x1b[38;2;0;220;255m│\x1b[0m\r\n",
         content,
         " ".repeat(pad)
     )
@@ -709,12 +818,13 @@ fn run_cooldown_screen(
     completed_run: usize,
     total_runs: usize,
     cooldown_seconds: u64,
+    target_temp_c: f32,
     last_report: &BenchmarkReport,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let start_time = Instant::now();
     let cooldown_dur = Duration::from_secs(cooldown_seconds);
 
-    while start_time.elapsed() < cooldown_dur {
+    loop {
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
@@ -732,10 +842,26 @@ fn run_cooldown_screen(
         }
 
         let elapsed = start_time.elapsed();
+        let stats = telemetry.sample(&adapter_info.name);
+        let cur_temp = stats.gpu_temp_c;
+
+        let is_thermally_cooled = cur_temp > 0.0 && cur_temp <= target_temp_c;
+        let is_heat_soaked = cur_temp >= 72.0;
+
+        let time_expired = elapsed >= cooldown_dur;
+
+        // Auto-advance when cooldown timer is finished AND GPU is not heat-soaked
+        if time_expired && !is_heat_soaked {
+            return Ok(true);
+        }
+
+        // Failsafe cap: if heat-soaked, wait up to an extra 30s max before auto-advancing
+        if time_expired && elapsed >= cooldown_dur + Duration::from_secs(30) {
+            return Ok(true);
+        }
+
         let remaining_secs = cooldown_seconds.saturating_sub(elapsed.as_secs());
         let progress_ratio = (elapsed.as_secs_f32() / cooldown_seconds.max(1) as f32).clamp(0.0, 1.0);
-
-        let stats = telemetry.sample(&adapter_info.name);
 
         let bar_width: usize = 28;
         let filled_chars = (progress_ratio * bar_width as f32).round() as usize;
@@ -746,7 +872,7 @@ fn run_cooldown_screen(
             "░".repeat(empty_chars)
         );
 
-        let temp_delta = stats.gpu_temp_c - last_report.peak_gpu_temp_c;
+        let temp_delta = cur_temp - last_report.peak_gpu_temp_c;
         let delta_sign = if temp_delta >= 0.0 { "+" } else { "" };
 
         let mut buf = String::with_capacity(2048);
@@ -775,12 +901,21 @@ fn run_cooldown_screen(
 
         buf.push_str("\x1b[38;2;0;220;255m├──────────────────────────────────────────────────────────────────────────┤\x1b[0m\r\n");
 
-        let line_head = "\x1b[1mLIVE HARDWARE TELEMETRY & DISSIPATION:\x1b[0m";
-        buf.push_str(&format_box_line(line_head, 72));
+        let status_badge = if is_thermally_cooled {
+            format!("\x1b[38;2;0;255;200;1m[●] COOLED (≤ {:.1}°C)\x1b[0m", target_temp_c)
+        } else if is_heat_soaked {
+            "\x1b[38;2;255;60;60;1m[⚠] HEAT-SOAK EXHAUSTION\x1b[0m".to_string()
+        } else {
+            let diff = cur_temp - target_temp_c;
+            format!("\x1b[38;2;0;220;255;1m[○] DISSIPATING (+{:.1}°C to target)\x1b[0m", diff.max(0.0))
+        };
+
+        let line_head = format!("THERMAL HYSTERESIS: {}", status_badge);
+        buf.push_str(&format_box_line(&line_head, 72));
 
         let line4 = format!(
-            "GPU Core Temp     : \x1b[38;2;0;255;200;1m{:.1}°C\x1b[38;2;140;150;170m (Run Peak: {:.1}°C, Delta: {}{:.1}°C)",
-            stats.gpu_temp_c, last_report.peak_gpu_temp_c, delta_sign, temp_delta
+            "GPU Core Temp     : \x1b[38;2;0;255;200;1m{:.1}°C\x1b[38;2;140;150;170m (Peak: {:.1}°C, Δ: {}{:.1}°C, Goal: ≤{:.1}°C)",
+            cur_temp, last_report.peak_gpu_temp_c, delta_sign, temp_delta, target_temp_c
         );
         buf.push_str(&format_box_line(&line4, 72));
 
@@ -798,15 +933,17 @@ fn run_cooldown_screen(
 
         buf.push_str("\x1b[38;2;0;220;255m├──────────────────────────────────────────────────────────────────────────┤\x1b[0m\r\n");
 
-        let line_foot = "\x1b[1m[Space / Enter]\x1b[0m Skip Cooldown   │   \x1b[1m[Esc / Q]\x1b[0m Finish Early with Completed Runs";
+        let line_foot = if is_heat_soaked && time_expired {
+            "\x1b[38;2;255;180;0;1m[Space / Enter]\x1b[0m Force Continue  │  \x1b[1m[Esc / Q]\x1b[0m Finish Early"
+        } else {
+            "\x1b[1m[Space / Enter]\x1b[0m Skip Cooldown   │  \x1b[1m[Esc / Q]\x1b[0m Finish Early"
+        };
         buf.push_str(&format_box_line(line_foot, 72));
 
         buf.push_str("\x1b[38;2;0;220;255;1m└──────────────────────────────────────────────────────────────────────────┘\x1b[0m\r\n");
 
         renderer.render_raw_text(&buf)?;
     }
-
-    Ok(true)
 }
 
 fn run_benchmark(
@@ -819,6 +956,8 @@ fn run_benchmark(
     term_height: usize,
     res_tag: &str,
     output_path: &str,
+    max_temp_c: f32,
+    failsafe_enabled: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     renderer.enter_alternate_screen()?;
     crossterm::terminal::enable_raw_mode()?;
@@ -833,15 +972,21 @@ fn run_benchmark(
         term_height,
         res_tag,
         None,
+        max_temp_c,
+        failsafe_enabled,
     );
 
     crossterm::terminal::disable_raw_mode()?;
     let _ = renderer.leave_alternate_screen();
 
     let report = match pass_res? {
-        Some(r) => r,
-        None => {
+        BenchmarkPassResult::Completed(r) => r,
+        BenchmarkPassResult::AbortedByUser => {
             println!("Benchmark aborted by user.");
+            return Ok(());
+        }
+        BenchmarkPassResult::ThermalTrip(trip) => {
+            dyno_term::benchmark::print_emergency_thermal_box(&trip);
             return Ok(());
         }
     };
@@ -869,6 +1014,9 @@ fn run_consistency_suite(
     adapter_info: &gpu::GpuAdapterInfo,
     iterations: usize,
     cooldown_seconds: u64,
+    target_temp_c: f32,
+    max_temp_c: f32,
+    failsafe_enabled: bool,
     frames_per_scene: u32,
     term_width: usize,
     term_height: usize,
@@ -880,6 +1028,7 @@ fn run_consistency_suite(
     crossterm::terminal::enable_raw_mode()?;
 
     let mut completed_runs = Vec::with_capacity(iterations);
+    let mut halted_by_thermal = false;
 
     for i in 1..=iterations {
         let pass_res = execute_benchmark_pass(
@@ -892,11 +1041,20 @@ fn run_consistency_suite(
             term_height,
             res_tag,
             Some((i, iterations)),
+            max_temp_c,
+            failsafe_enabled,
         );
 
         let report = match pass_res {
-            Ok(Some(r)) => r,
-            Ok(None) => {
+            Ok(BenchmarkPassResult::Completed(r)) => r,
+            Ok(BenchmarkPassResult::AbortedByUser) => {
+                break;
+            }
+            Ok(BenchmarkPassResult::ThermalTrip(trip)) => {
+                crossterm::terminal::disable_raw_mode()?;
+                let _ = renderer.leave_alternate_screen();
+                dyno_term::benchmark::print_emergency_thermal_box(&trip);
+                halted_by_thermal = true;
                 break;
             }
             Err(e) => {
@@ -920,6 +1078,7 @@ fn run_consistency_suite(
                 i,
                 iterations,
                 cooldown_seconds,
+                target_temp_c,
                 last,
             )?;
             if !keep_going {
@@ -930,6 +1089,10 @@ fn run_consistency_suite(
 
     crossterm::terminal::disable_raw_mode()?;
     let _ = renderer.leave_alternate_screen();
+
+    if halted_by_thermal {
+        eprintln!("\x1b[38;2;255;180;0;1m⚠ Consistency testing halted prematurely by thermal tripwire after {} run(s).\x1b[0m", completed_runs.len());
+    }
 
     if completed_runs.is_empty() {
         println!("Consistency suite aborted before any iterations completed.");

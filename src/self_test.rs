@@ -241,9 +241,18 @@ fn test_gpu_suite(preferred_gpu: Option<usize>) -> TestReport {
     let info = &gpu_ctx.adapter_info;
     details.push(format!("Active GPU: {} | {:?} | {:?}", info.name, info.backend, info.device_type));
 
-    // Create ComputePipelineManager at test resolution (320x180)
+    // Verify Pre-Flight VRAM Headroom Guard
     let test_w = 320u32;
     let test_h = 180u32;
+    let vram_guard_check = crate::benchmark::failsafe::VramHeadroomCheck::evaluate(&gpu_ctx.device, test_w, test_h, None);
+    if vram_guard_check.is_ok() {
+        details.push("Pre-flight VRAM headroom & hardware buffer limits guard verified".to_string());
+    } else {
+        passed = false;
+        details.push("Pre-flight VRAM guard failed at 320x180 test resolution".to_string());
+    }
+
+    // Create ComputePipelineManager at test resolution (320x180)
     let prev_w = 80u32;
     let prev_h = 40u32;
 
@@ -338,6 +347,25 @@ fn test_telemetry_suite() -> TestReport {
         details.push("TelemetryCollector background sampling worker verified".to_string());
     }
     drop(collector);
+
+    // Thermal Failsafe tripwire verification
+    let mut failsafe = crate::benchmark::failsafe::ThermalFailsafe::new(105.0, true);
+    let safe_stats = crate::telemetry::HardwareStats {
+        gpu_temp_c: 65.0,
+        gpu_hotspot_c: 75.0,
+        ..Default::default()
+    };
+    let danger_stats = crate::telemetry::HardwareStats {
+        gpu_temp_c: 80.0,
+        gpu_hotspot_c: 106.0,
+        ..Default::default()
+    };
+    if failsafe.check(&safe_stats).is_none() && failsafe.check(&danger_stats).is_some() {
+        details.push("Emergency thermal failsafe & tripwire safeguards verified".to_string());
+    } else {
+        passed = false;
+        details.push("Thermal failsafe logic verification failed".to_string());
+    }
 
     let duration = t0.elapsed();
     print_suite_status(4, 6, "Telemetry & Hardware Sensors", passed, duration, &details);

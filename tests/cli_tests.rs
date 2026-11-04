@@ -139,3 +139,24 @@ fn test_parse_resolution_all_presets() {
     // Unknown fallback defaults to 4K UHD
     assert_eq!(parse_resolution("unknown_preset", 100, 100), (3840, 2160));
 }
+
+#[test]
+fn test_cli_failsafe_flags() {
+    let args = Args::try_parse_from([
+        "dyno_term",
+        "--max-temp",
+        "98.5",
+        "--no-failsafe",
+        "--target-temp",
+        "50.0",
+    ])
+    .expect("Failed to parse failsafe flags");
+    assert_eq!(args.max_temp, 98.5);
+    assert!(args.no_failsafe);
+    assert_eq!(args.target_temp, 50.0);
+
+    let args_default = Args::try_parse_from(["dyno_term"]).expect("Failed default parse");
+    assert_eq!(args_default.max_temp, 105.0);
+    assert!(!args_default.no_failsafe);
+    assert_eq!(args_default.target_temp, 55.0);
+}

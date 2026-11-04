@@ -23,6 +23,18 @@ pub struct Args {
     #[arg(long, default_value_t = 60)]
     pub cooldown: u64,
 
+    /// Target temperature in Celsius for dynamic consistency cooldown (default: 55.0)
+    #[arg(long, default_value_t = 55.0)]
+    pub target_temp: f32,
+
+    /// Maximum safe thermal limit in Celsius before triggering emergency tripwire (default: 105.0)
+    #[arg(long, default_value_t = 105.0)]
+    pub max_temp: f32,
+
+    /// Disable emergency thermal tripwire and hardware safeguards (use with caution)
+    #[arg(long)]
+    pub no_failsafe: bool,
+
     /// Run in interactive demo preview mode directly
     #[arg(short, long)]
     pub demo: bool,

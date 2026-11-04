@@ -66,8 +66,14 @@ impl ComputePipelineManager {
             mapped_at_creation: false,
         });
 
-        let pixel_count = (width * height) as u64;
-        let buffer_size = pixel_count * 4; // 4 bytes per pixel (RGBA8)
+        // Pre-Flight VRAM & Buffer Limit Guard: validate against device limits before buffer creation
+        let vram_check = crate::benchmark::failsafe::VramHeadroomCheck::evaluate(&device, width, height, None)?;
+        if let Some(ref warn) = vram_check.warning {
+            eprintln!("\x1b[38;2;255;180;0;1m⚠ VRAM Headroom Warning:\x1b[0m {}", warn);
+        }
+
+        let pixel_count = (width as u64) * (height as u64);
+        let buffer_size = pixel_count.saturating_mul(4); // 4 bytes per pixel (RGBA8)
 
         let storage_buffer = device.create_buffer(&BufferDescriptor {
             label: Some("Storage Buffer (Pixels)"),
