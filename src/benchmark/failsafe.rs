@@ -145,7 +145,8 @@ impl GpuMemoryInfo {
     /// Automatically queries physical hardware sensors or derives conservative estimates from device limits.
     pub fn detect(device: &Device) -> Self {
         let limits = device.limits();
-        if let Some((used_mb, total_mb)) = crate::telemetry::TelemetryCollector::query_system_vram() {
+        if let Some((used_mb, total_mb)) = crate::telemetry::TelemetryCollector::query_system_vram()
+        {
             let free_mb = total_mb.saturating_sub(used_mb);
             Self {
                 total_vram_mb: total_mb,
@@ -158,7 +159,9 @@ impl GpuMemoryInfo {
             }
         } else {
             // Conservative fallback from device max_buffer_size
-            let est_total_mb = (limits.max_buffer_size / (1024 * 1024)).saturating_mul(2).max(1024);
+            let est_total_mb = (limits.max_buffer_size / (1024 * 1024))
+                .saturating_mul(2)
+                .max(1024);
             let est_free_mb = est_total_mb.saturating_mul(3) / 4;
             Self {
                 total_vram_mb: est_total_mb,
@@ -224,21 +227,15 @@ impl GpuMemoryInfo {
             VramTestTier::Light => {
                 (safe_free_bytes / 20).clamp(32 * 1024 * 1024, 128 * 1024 * 1024)
             }
-            VramTestTier::Balanced => {
-                (safe_free_bytes * 15 / 100)
-                    .min(self.max_buffer_size / 2)
-                    .max(64 * 1024 * 1024)
-            }
-            VramTestTier::Stress => {
-                (safe_free_bytes * 45 / 100)
-                    .min(self.max_buffer_size * 3 / 4)
-                    .max(128 * 1024 * 1024)
-            }
-            VramTestTier::MaximumSafe => {
-                (safe_free_bytes * 80 / 100)
-                    .min(self.max_buffer_size * 9 / 10)
-                    .max(128 * 1024 * 1024)
-            }
+            VramTestTier::Balanced => (safe_free_bytes * 15 / 100)
+                .min(self.max_buffer_size / 2)
+                .max(64 * 1024 * 1024),
+            VramTestTier::Stress => (safe_free_bytes * 45 / 100)
+                .min(self.max_buffer_size * 3 / 4)
+                .max(128 * 1024 * 1024),
+            VramTestTier::MaximumSafe => (safe_free_bytes * 80 / 100)
+                .min(self.max_buffer_size * 9 / 10)
+                .max(128 * 1024 * 1024),
         };
 
         let overhead = 64 * 1024 * 1024;
@@ -396,7 +393,11 @@ impl VramHeadroomCheck {
         if mem_info.free_vram_mb > 0 && required_mb > safe_free_mb {
             return Err(format!(
                 "Out-of-memory failsafe: Workload requires estimated ~{} MB VRAM, but only {} MB safe headroom available (detected free: {} MB, total: {} MB, safety reserve: {} MB). Allocation aborted.",
-                required_mb, safe_free_mb, mem_info.free_vram_mb, mem_info.total_vram_mb, safety_margin_mb
+                required_mb,
+                safe_free_mb,
+                mem_info.free_vram_mb,
+                mem_info.total_vram_mb,
+                safety_margin_mb
             ));
         }
 
@@ -428,8 +429,8 @@ impl VramHeadroomCheck {
 /// Total line width: '│ ' (2) + content (vlen) + pad (72 - vlen) + ' │' (2) = 76 characters.
 pub fn format_emergency_line(content: &str) -> String {
     let vlen = crate::terminal::menu::visible_len(content);
-    let target = 72;
-    let pad = if vlen < target { target - vlen } else { 0 };
+    let target: usize = 72;
+    let pad = target.saturating_sub(vlen);
     format!(
         "\x1b[38;2;255;60;60;1m│\x1b[0m {}{} \x1b[38;2;255;60;60;1m│\x1b[0m",
         content,
@@ -444,7 +445,10 @@ pub fn format_emergency_box(trip: &ThermalTripReport) -> String {
     out.push_str(&format_emergency_line("\x1b[38;2;255;255;255;1m       🚨 EMERGENCY HARDWARE THERMAL FAILSAFE TRIPPED 🚨        \x1b[0m"));
     out.push_str("\r\n\x1b[38;2;255;60;60;1m├──────────────────────────────────────────────────────────────────────────┤\x1b[0m\r\n");
 
-    let line1 = format!("SENSOR  : \x1b[38;2;255;255;255;1m{}\x1b[0m", trip.sensor_type);
+    let line1 = format!(
+        "SENSOR  : \x1b[38;2;255;255;255;1m{}\x1b[0m",
+        trip.sensor_type
+    );
     out.push_str(&format_emergency_line(&line1));
     out.push_str("\r\n");
 
@@ -511,7 +515,9 @@ mod tests {
             ..Default::default()
         };
 
-        let trip = failsafe.check(&stats).expect("Should trip on hotspot breach");
+        let trip = failsafe
+            .check(&stats)
+            .expect("Should trip on hotspot breach");
         assert_eq!(trip.sensor_type, "GPU Silicon Junction (Hotspot)");
         assert_eq!(trip.current_temp_c, 106.5);
     }
@@ -543,7 +549,9 @@ mod tests {
             ..Default::default()
         };
 
-        let trip = failsafe.check(&stats).expect("Should trip on proximity to crit limit");
+        let trip = failsafe
+            .check(&stats)
+            .expect("Should trip on proximity to crit limit");
         assert_eq!(trip.ceiling_temp_c, 96.0);
     }
 
@@ -586,7 +594,9 @@ mod tests {
             current_temp_c: 106.5,
             ceiling_temp_c: 105.0,
             crit_limit_c: 110.0,
-            message: "Silicon junction hotspot reached 106.5°C, exceeding safety ceiling of 105.0°C".to_string(),
+            message:
+                "Silicon junction hotspot reached 106.5°C, exceeding safety ceiling of 105.0°C"
+                    .to_string(),
         };
 
         let box_str = format_emergency_box(&trip);
@@ -605,7 +615,13 @@ mod tests {
 
     #[test]
     fn test_vram_adaptation_8gb_gpu() {
-        let mem_8gb = GpuMemoryInfo::synthetic(8192, 3500, 4 * 1024 * 1024 * 1024, 4 * 1024 * 1024 * 1024, 65535);
+        let mem_8gb = GpuMemoryInfo::synthetic(
+            8192,
+            3500,
+            4 * 1024 * 1024 * 1024,
+            4 * 1024 * 1024 * 1024,
+            65535,
+        );
 
         let (light_w, light_h) = mem_8gb.recommend_resolution(VramTestTier::Light);
         assert!(light_w >= 160 && light_h >= 90);
@@ -660,7 +676,13 @@ mod tests {
 
     #[test]
     fn test_vram_headroom_oob_and_oom_checks() {
-        let mem_8gb = GpuMemoryInfo::synthetic(8192, 3500, 4 * 1024 * 1024 * 1024, 4 * 1024 * 1024 * 1024, 65535);
+        let mem_8gb = GpuMemoryInfo::synthetic(
+            8192,
+            3500,
+            4 * 1024 * 1024 * 1024,
+            4 * 1024 * 1024 * 1024,
+            65535,
+        );
 
         // OOB check: 0x0
         assert!(mem_8gb.recommend_resolution(VramTestTier::Light).0 > 0);
@@ -668,6 +690,9 @@ mod tests {
         // OOM check: calculate required memory for 65536x65536 (17.1GB single buffer = ~34GB total)
         let single_buf = 65536u64 * 65536 * 4;
         let total_mb = (single_buf * 2 + 64 * 1024 * 1024) / (1024 * 1024);
-        assert!(total_mb > mem_8gb.total_vram_mb, "65536x65536 should exceed 8GB GPU capacity");
+        assert!(
+            total_mb > mem_8gb.total_vram_mb,
+            "65536x65536 should exceed 8GB GPU capacity"
+        );
     }
 }

@@ -1,5 +1,5 @@
 use clap::Parser;
-use dyno_term::cli::{parse_resolution, Args};
+use dyno_term::cli::{Args, parse_resolution};
 
 #[test]
 fn test_cli_default_args() {
@@ -53,8 +53,8 @@ fn test_cli_history_and_baseline_flags() {
         Args::try_parse_from(["dyno_term", "--history"]).expect("Failed to parse --history");
     assert!(args_hist.history);
 
-    let args_set_base_default =
-        Args::try_parse_from(["dyno_term", "--set-baseline"]).expect("Failed to parse --set-baseline");
+    let args_set_base_default = Args::try_parse_from(["dyno_term", "--set-baseline"])
+        .expect("Failed to parse --set-baseline");
     assert_eq!(
         args_set_base_default.set_baseline,
         Some("dyno_benchmark_results.json".to_string())
@@ -68,9 +68,14 @@ fn test_cli_history_and_baseline_flags() {
         Some("custom_report.json".to_string())
     );
 
-    let args_compare =
-        Args::try_parse_from(["dyno_term", "--compare", "new_report.json", "--baseline", "base.json"])
-            .expect("Failed to parse --compare");
+    let args_compare = Args::try_parse_from([
+        "dyno_term",
+        "--compare",
+        "new_report.json",
+        "--baseline",
+        "base.json",
+    ])
+    .expect("Failed to parse --compare");
     assert_eq!(args_compare.compare, Some("new_report.json".to_string()));
     assert_eq!(args_compare.baseline, Some("base.json".to_string()));
 }

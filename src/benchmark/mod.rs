@@ -3,21 +3,21 @@ pub mod failsafe;
 pub mod history;
 pub mod telemetry;
 pub use consistency::{
+    ConsistencyReport, DEFAULT_CONSISTENCY_FILE, SceneConsistencyStats, StatSummary,
     compute_consistency_report, format_consistency_scorecard, load_consistency_report,
-    save_consistency_report, ConsistencyReport, SceneConsistencyStats, StatSummary,
-    DEFAULT_CONSISTENCY_FILE,
+    save_consistency_report,
 };
 pub use failsafe::{
-    format_emergency_box, format_emergency_line, print_emergency_thermal_box, GpuMemoryInfo,
-    ThermalFailsafe, ThermalTripReport, VramHeadroomCheck, VramTestTier,
+    GpuMemoryInfo, ThermalFailsafe, ThermalTripReport, VramHeadroomCheck, VramTestTier,
+    format_emergency_box, format_emergency_line, print_emergency_thermal_box,
 };
 pub use history::{
+    BenchmarkComparison, DEFAULT_BASELINE_FILE, DEFAULT_HISTORY_FILE, SceneComparison,
     append_to_history, compare_reports, format_comparison_table, format_history_table,
-    load_baseline, load_history, save_baseline, BenchmarkComparison, SceneComparison,
-    DEFAULT_BASELINE_FILE, DEFAULT_HISTORY_FILE,
+    load_baseline, load_history, save_baseline,
 };
 pub use telemetry::{
-    format_gpu_assessment_box, GpuTelemetryAssessment, SensorMetric, TelemetrySnapshot,
+    GpuTelemetryAssessment, SensorMetric, TelemetrySnapshot, format_gpu_assessment_box,
 };
 
 use serde::{Deserialize, Serialize};
@@ -83,6 +83,12 @@ pub struct BenchmarkScorer {
     last_snapshot_time: Instant,
 }
 
+impl Default for BenchmarkScorer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BenchmarkScorer {
     pub fn new() -> Self {
         let now = Instant::now();
@@ -100,6 +106,7 @@ impl BenchmarkScorer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn record_frame(
         &mut self,
         dt: Duration,
@@ -159,9 +166,17 @@ impl BenchmarkScorer {
         if force || now.duration_since(self.last_snapshot_time) >= Duration::from_millis(250) {
             self.last_snapshot_time = now;
             let elapsed_sec = now.duration_since(self.benchmark_start).as_secs_f32();
-            let last_dt = self.frametimes.last().copied().unwrap_or(Duration::from_millis(16));
+            let last_dt = self
+                .frametimes
+                .last()
+                .copied()
+                .unwrap_or(Duration::from_millis(16));
             let frametime_ms = last_dt.as_secs_f32() * 1000.0;
-            let fps = if frametime_ms > 0.0 { 1000.0 / frametime_ms } else { 0.0 };
+            let fps = if frametime_ms > 0.0 {
+                1000.0 / frametime_ms
+            } else {
+                0.0
+            };
             let fan_pwm_pct = (stats.gpu_fan_pwm as f32 / 255.0) * 100.0;
 
             self.snapshots.push(TelemetrySnapshot {
@@ -295,9 +310,33 @@ mod tests {
     #[test]
     fn test_benchmark_scorer_peaks() {
         let mut scorer = BenchmarkScorer::new();
-        scorer.record_frame(Duration::from_millis(16), 55.0, 65.0, 70.0, 100.0, 2048, 2100);
-        scorer.record_frame(Duration::from_millis(14), 62.0, 72.0, 99.0, 130.0, 4096, 2450);
-        scorer.record_frame(Duration::from_millis(18), 60.0, 70.0, 85.0, 115.0, 3072, 2300);
+        scorer.record_frame(
+            Duration::from_millis(16),
+            55.0,
+            65.0,
+            70.0,
+            100.0,
+            2048,
+            2100,
+        );
+        scorer.record_frame(
+            Duration::from_millis(14),
+            62.0,
+            72.0,
+            99.0,
+            130.0,
+            4096,
+            2450,
+        );
+        scorer.record_frame(
+            Duration::from_millis(18),
+            60.0,
+            70.0,
+            85.0,
+            115.0,
+            3072,
+            2300,
+        );
 
         assert_eq!(scorer.peak_temp, 62.0);
         assert_eq!(scorer.peak_hotspot, 72.0);
@@ -322,9 +361,25 @@ mod tests {
         let mut scorer = BenchmarkScorer::new();
         // Record 100 frames of 10ms, and 1 frame of 50ms spike
         for _ in 0..99 {
-            scorer.record_frame(Duration::from_millis(10), 50.0, 60.0, 90.0, 100.0, 2000, 2000);
+            scorer.record_frame(
+                Duration::from_millis(10),
+                50.0,
+                60.0,
+                90.0,
+                100.0,
+                2000,
+                2000,
+            );
         }
-        scorer.record_frame(Duration::from_millis(50), 50.0, 60.0, 90.0, 100.0, 2000, 2000);
+        scorer.record_frame(
+            Duration::from_millis(50),
+            50.0,
+            60.0,
+            90.0,
+            100.0,
+            2000,
+            2000,
+        );
 
         let res = scorer.compute_scene_result(0, "Test Scene", 1000);
         assert_eq!(res.frames_rendered, 100);

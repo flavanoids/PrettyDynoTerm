@@ -109,7 +109,7 @@ impl NBodySimulation {
             .collect();
 
         // Integrate positions
-        for (p, (ax, ay, az)) in self.particles.iter_mut().zip(accelerations.into_iter()) {
+        for (p, (ax, ay, az)) in self.particles.iter_mut().zip(accelerations) {
             p.vx += ax * dt;
             p.vy += ay * dt;
             p.vz += az * dt;
@@ -137,7 +137,7 @@ impl NBodySimulation {
         let buf = &mut buffer[..expected_len];
 
         // Clear buffer to dark cosmic obsidian
-        for chunk in buf.chunks_exact_mut(4) {
+        for chunk in buf.as_chunks_mut::<4>().0 {
             chunk[0] = 5;
             chunk[1] = 6;
             chunk[2] = 16;
@@ -234,10 +234,15 @@ mod tests {
         assert_eq!(buffer[3], 255); // Alpha should be 255
 
         // Check that at least some particle colors were blended
-        let has_particles = buffer.chunks_exact(4).any(|chunk| {
-            chunk[0] > 5 || chunk[1] > 6 || chunk[2] > 16
-        });
-        assert!(has_particles, "Rasterizer should render particles into buffer");
+        let has_particles = buffer
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|chunk| chunk[0] > 5 || chunk[1] > 6 || chunk[2] > 16);
+        assert!(
+            has_particles,
+            "Rasterizer should render particles into buffer"
+        );
     }
 
     #[test]

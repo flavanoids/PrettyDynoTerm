@@ -83,6 +83,11 @@ Hierarchical forward kinematics bipedal gait simulation evaluating 16-joint arti
 - **High-Performance 4K UHD Offscreen Compute**:
   - Defaults to computing at **3840×2160 (4K UHD)**—computing over **8.29 million pixels** per frame!
   - VRAM-native GPU compute downsampling to your terminal character grid using UTF-8 half-blocks (`▀`), providing extreme supersampling anti-aliasing (SSAA).
+- **Dynamic VRAM Scaling & Headroom Safeguards (4GB to 200GB+ VRAM)**:
+  - Dynamically inspects host GPU memory limits, physical device VRAM, and active allocation state.
+  - Dynamically calculates tier targets (`Light`, `Balanced`, `Stress`, `MaxSafe`) scaling intelligently from 4GB/8GB consumer GPUs up to 80GB/200GB+ datacenter accelerators (e.g. NVIDIA H100/H200, AMD MI300X) without crashing or running out of memory.
+  - Zero-dimension and out-of-bounds guards across all CPU N-body, shader dispatch, and terminal downsampling buffers.
+  - Automatic fallback recovery gracefully protects workloads when user configurations exceed physical buffer limits.
 - **Cybernetic Telemetry HUD & Automated Hardware Assessment Engine**:
   - Live GPU core clock (MHz), memory clock (MHz), core voltage ($V_{\text{core}}$ in mV), junction temperature (°C), board power (Watts), and VRAM utilization.
   - Real-time CPU multi-core utilization sparkline and thread count.

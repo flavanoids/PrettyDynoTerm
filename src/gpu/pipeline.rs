@@ -66,9 +66,13 @@ impl ComputePipelineManager {
         stats: Option<&crate::telemetry::HardwareStats>,
     ) -> Result<Self, String> {
         // Pre-Flight VRAM & Buffer Limit Guard: validate against device limits and available VRAM headroom before buffer creation
-        let vram_check = crate::benchmark::failsafe::VramHeadroomCheck::evaluate(&device, width, height, stats)?;
+        let vram_check =
+            crate::benchmark::failsafe::VramHeadroomCheck::evaluate(&device, width, height, stats)?;
         if let Some(ref warn) = vram_check.warning {
-            eprintln!("\x1b[38;2;255;180;0;1m⚠ VRAM Headroom Warning:\x1b[0m {}", warn);
+            eprintln!(
+                "\x1b[38;2;255;180;0;1m⚠ VRAM Headroom Warning:\x1b[0m {}",
+                warn
+            );
         }
 
         let shader = device.create_shader_module(ShaderModuleDescriptor {
@@ -208,12 +212,11 @@ impl ComputePipelineManager {
                 ],
             });
 
-        let downsample_pipeline_layout =
-            device.create_pipeline_layout(&PipelineLayoutDescriptor {
-                label: Some("Downsample Pipeline Layout"),
-                bind_group_layouts: &[Some(&downsample_bind_group_layout)],
-                immediate_size: 0,
-            });
+        let downsample_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Some("Downsample Pipeline Layout"),
+            bind_group_layouts: &[Some(&downsample_bind_group_layout)],
+            immediate_size: 0,
+        });
 
         let downsample_pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
             label: Some("Downsample Pipeline"),
@@ -346,7 +349,12 @@ impl ComputePipelineManager {
         }
 
         // Validate new dimensions through pre-flight VRAM and OOB headroom guard
-        crate::benchmark::failsafe::VramHeadroomCheck::evaluate(&self.device, new_width, new_height, None)?;
+        crate::benchmark::failsafe::VramHeadroomCheck::evaluate(
+            &self.device,
+            new_width,
+            new_height,
+            None,
+        )?;
 
         let buffer_size = (new_width as u64)
             .checked_mul(new_height as u64)
@@ -416,7 +424,10 @@ impl ComputePipelineManager {
     #[allow(dead_code)]
     pub fn resize(&mut self, new_width: u32, new_height: u32) {
         if let Err(err) = self.try_resize(new_width, new_height) {
-            eprintln!("\x1b[38;2;255;100;100;1m⚠ Resize rejected by VRAM/OOB failsafe:\x1b[0m {}", err);
+            eprintln!(
+                "\x1b[38;2;255;100;100;1m⚠ Resize rejected by VRAM/OOB failsafe:\x1b[0m {}",
+                err
+            );
         }
     }
 
@@ -464,8 +475,8 @@ impl ComputePipelineManager {
             });
             compute_pass.set_pipeline(&self.pipeline);
             compute_pass.set_bind_group(0, &self.bind_group, &[]);
-            let workgroups_x = (self.width + 15) / 16;
-            let workgroups_y = (self.height + 15) / 16;
+            let workgroups_x = self.width.div_ceil(16);
+            let workgroups_y = self.height.div_ceil(16);
             compute_pass.dispatch_workgroups(workgroups_x, workgroups_y, 1);
         }
 
@@ -477,8 +488,8 @@ impl ComputePipelineManager {
             });
             compute_pass.set_pipeline(&self.downsample_pipeline);
             compute_pass.set_bind_group(0, &self.downsample_bind_group, &[]);
-            let workgroups_x = (dst_width + 15) / 16;
-            let workgroups_y = (dst_height + 15) / 16;
+            let workgroups_x = dst_width.div_ceil(16);
+            let workgroups_y = dst_height.div_ceil(16);
             compute_pass.dispatch_workgroups(workgroups_x, workgroups_y, 1);
         }
 
@@ -502,9 +513,13 @@ impl ComputePipelineManager {
         });
 
         self.device.poll(PollType::wait_indefinitely()).unwrap();
-        rx.recv().unwrap().expect("Failed to map preview staging buffer");
+        rx.recv()
+            .unwrap()
+            .expect("Failed to map preview staging buffer");
 
-        let mapped = buffer_slice.get_mapped_range().expect("Failed to get mapped range");
+        let mapped = buffer_slice
+            .get_mapped_range()
+            .expect("Failed to get mapped range");
         let copy_len = dst_buf.len().min(mapped.len());
         dst_buf[..copy_len].copy_from_slice(&mapped[..copy_len]);
         drop(mapped);
@@ -529,8 +544,8 @@ impl ComputePipelineManager {
             });
             compute_pass.set_pipeline(&self.pipeline);
             compute_pass.set_bind_group(0, &self.bind_group, &[]);
-            let workgroups_x = (self.width + 15) / 16;
-            let workgroups_y = (self.height + 15) / 16;
+            let workgroups_x = self.width.div_ceil(16);
+            let workgroups_y = self.height.div_ceil(16);
             compute_pass.dispatch_workgroups(workgroups_x, workgroups_y, 1);
         }
 
@@ -563,8 +578,8 @@ impl ComputePipelineManager {
             });
             compute_pass.set_pipeline(&self.pipeline);
             compute_pass.set_bind_group(0, &self.bind_group, &[]);
-            let workgroups_x = (self.width + 15) / 16;
-            let workgroups_y = (self.height + 15) / 16;
+            let workgroups_x = self.width.div_ceil(16);
+            let workgroups_y = self.height.div_ceil(16);
             compute_pass.dispatch_workgroups(workgroups_x, workgroups_y, 1);
         }
 
@@ -592,8 +607,8 @@ impl ComputePipelineManager {
             compute_pass.set_pipeline(&self.pipeline);
             compute_pass.set_bind_group(0, &self.bind_group, &[]);
 
-            let workgroups_x = (self.width + 15) / 16;
-            let workgroups_y = (self.height + 15) / 16;
+            let workgroups_x = self.width.div_ceil(16);
+            let workgroups_y = self.height.div_ceil(16);
             compute_pass.dispatch_workgroups(workgroups_x, workgroups_y, 1);
         }
 
@@ -618,7 +633,9 @@ impl ComputePipelineManager {
         self.device.poll(PollType::wait_indefinitely()).unwrap();
         rx.recv().unwrap().expect("Failed to map staging buffer");
 
-        let mapped = buffer_slice.get_mapped_range().expect("Failed to get mapped range");
+        let mapped = buffer_slice
+            .get_mapped_range()
+            .expect("Failed to get mapped range");
         let pixel_bytes = mapped.to_vec();
         drop(mapped);
         self.staging_buffer.unmap();

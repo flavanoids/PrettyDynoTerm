@@ -301,12 +301,66 @@ fn test_out_of_memory_fail_safes() {
 fn test_vram_scaling_model_8gb_to_200gb() {
     // Test across diverse synthetic profiles spanning 4GB to 200GB VRAM
     let profiles = [
-        ("4GB Entry Discrete", GpuMemoryInfo::synthetic(4096, 2500, 2 * 1024 * 1024 * 1024, 2 * 1024 * 1024 * 1024, 65535)),
-        ("8GB Discrete (e.g. RX 6650 XT)", GpuMemoryInfo::synthetic(8192, 3500, 4 * 1024 * 1024 * 1024, 4 * 1024 * 1024 * 1024, 65535)),
-        ("16GB Enthusiast", GpuMemoryInfo::synthetic(16384, 12000, 8 * 1024 * 1024 * 1024, 8 * 1024 * 1024 * 1024, 65535)),
-        ("24GB Pro / Creator", GpuMemoryInfo::synthetic(24576, 18000, 12 * 1024 * 1024 * 1024, 12 * 1024 * 1024 * 1024, 65535)),
-        ("80GB AI Workstation", GpuMemoryInfo::synthetic(81920, 70000, 32 * 1024 * 1024 * 1024, 32 * 1024 * 1024 * 1024, 65535)),
-        ("200GB Datacenter Scale", GpuMemoryInfo::synthetic(204800, 180000, 64 * 1024 * 1024 * 1024, 64 * 1024 * 1024 * 1024, 65535)),
+        (
+            "4GB Entry Discrete",
+            GpuMemoryInfo::synthetic(
+                4096,
+                2500,
+                2 * 1024 * 1024 * 1024,
+                2 * 1024 * 1024 * 1024,
+                65535,
+            ),
+        ),
+        (
+            "8GB Discrete (e.g. RX 6650 XT)",
+            GpuMemoryInfo::synthetic(
+                8192,
+                3500,
+                4 * 1024 * 1024 * 1024,
+                4 * 1024 * 1024 * 1024,
+                65535,
+            ),
+        ),
+        (
+            "16GB Enthusiast",
+            GpuMemoryInfo::synthetic(
+                16384,
+                12000,
+                8 * 1024 * 1024 * 1024,
+                8 * 1024 * 1024 * 1024,
+                65535,
+            ),
+        ),
+        (
+            "24GB Pro / Creator",
+            GpuMemoryInfo::synthetic(
+                24576,
+                18000,
+                12 * 1024 * 1024 * 1024,
+                12 * 1024 * 1024 * 1024,
+                65535,
+            ),
+        ),
+        (
+            "80GB AI Workstation",
+            GpuMemoryInfo::synthetic(
+                81920,
+                70000,
+                32 * 1024 * 1024 * 1024,
+                32 * 1024 * 1024 * 1024,
+                65535,
+            ),
+        ),
+        (
+            "200GB Datacenter Scale",
+            GpuMemoryInfo::synthetic(
+                204800,
+                180000,
+                64 * 1024 * 1024 * 1024,
+                64 * 1024 * 1024 * 1024,
+                65535,
+            ),
+        ),
     ];
 
     let mut last_balanced_pixels = 0u64;
@@ -324,7 +378,18 @@ fn test_vram_scaling_model_8gb_to_200gb() {
 
         println!(
             "Profile [{}]: Light={}x{}, Balanced={}x{} ({:.1} Mpix), Stress={}x{} ({:.1} Mpix), MaxSafe={}x{} ({:.1} Mpix)",
-            label, light_w, light_h, bal_w, bal_h, bal_pix as f64 / 1e6, stress_w, stress_h, stress_pix as f64 / 1e6, max_w, max_h, max_pix as f64 / 1e6
+            label,
+            light_w,
+            light_h,
+            bal_w,
+            bal_h,
+            bal_pix as f64 / 1e6,
+            stress_w,
+            stress_h,
+            stress_pix as f64 / 1e6,
+            max_w,
+            max_h,
+            max_pix as f64 / 1e6
         );
 
         // Verification 1: Within each profile, tiers must scale monotonically
@@ -344,7 +409,9 @@ fn test_vram_scaling_model_8gb_to_200gb() {
         assert!(
             total_est_mb <= profile.free_vram_mb,
             "MaxSafe resolution on {} must not exceed free VRAM (got {} MB, free {} MB)",
-            label, total_est_mb, profile.free_vram_mb
+            label,
+            total_est_mb,
+            profile.free_vram_mb
         );
         assert!(single_buf_bytes <= profile.max_buffer_size);
     }

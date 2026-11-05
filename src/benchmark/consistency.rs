@@ -120,7 +120,7 @@ pub fn compute_consistency_report(
     }
 
     let first = &runs[0];
-    let scores: Vec<f64> = runs.iter().map(|r| r.overall_score as f64).collect();
+    let scores: Vec<f64> = runs.iter().map(|r| r.overall_score).collect();
     let durations: Vec<f64> = runs.iter().map(|r| r.total_elapsed_seconds).collect();
     let temps: Vec<f64> = runs.iter().map(|r| r.peak_gpu_temp_c as f64).collect();
     let hotspots: Vec<f64> = runs.iter().map(|r| r.peak_gpu_hotspot_c as f64).collect();
@@ -240,7 +240,10 @@ pub fn compute_consistency_report(
                 peak_gpu_clock_mhz: last_run.peak_gpu_clock_mhz,
                 peak_gpu_util_pct: last_run.peak_gpu_util_pct,
             };
-            Some(super::telemetry::GpuTelemetryAssessment::evaluate(&all_snapshots, &stats))
+            Some(super::telemetry::GpuTelemetryAssessment::evaluate(
+                &all_snapshots,
+                &stats,
+            ))
         } else {
             None
         }
@@ -288,11 +291,22 @@ pub fn format_consistency_scorecard(report: &ConsistencyReport) -> String {
 
     out.push_str("\n\x1b[38;2;0;220;255;1m┌──────────────────────────────────────────────────────────────────────────┐\n");
     out.push_str("│             DYNO_TERM CONSISTENCY & THERMAL STABILITY SCORECARD          │\n");
-    out.push_str("├──────────────────────────────────────────────────────────────────────────┤\x1b[0m\n");
+    out.push_str(
+        "├──────────────────────────────────────────────────────────────────────────┤\x1b[0m\n",
+    );
 
-    let gpu_info = format!("{} ({})", report.system_info.gpu_name, report.system_info.gpu_backend);
-    let cpu_info = format!("{} ({} Threads)", report.system_info.cpu_name, report.system_info.cpu_threads);
-    let run_info = format!("{} Iterations │ {}s Cooldown Pause", report.iterations_completed, report.cooldown_seconds);
+    let gpu_info = format!(
+        "{} ({})",
+        report.system_info.gpu_name, report.system_info.gpu_backend
+    );
+    let cpu_info = format!(
+        "{} ({} Threads)",
+        report.system_info.cpu_name, report.system_info.cpu_threads
+    );
+    let run_info = format!(
+        "{} Iterations │ {}s Cooldown Pause",
+        report.iterations_completed, report.cooldown_seconds
+    );
 
     out.push_str(&format!(
         "\x1b[38;2;140;150;170m│ GPU: \x1b[38;2;255;255;255;1m{:<67}\x1b[38;2;0;220;255m│\n",
@@ -335,8 +349,7 @@ pub fn format_consistency_scorecard(report: &ConsistencyReport) -> String {
     let mean_score_fmt = format!("{:.2} pts", report.score_stats.mean);
     let std_score_fmt = format!(
         "±{:.2} pts ({:.3}% CV)",
-        report.score_stats.std_dev,
-        report.score_stats.cv_pct
+        report.score_stats.std_dev, report.score_stats.cv_pct
     );
     let spread_pct = if report.score_stats.mean > 0.0 {
         (report.score_stats.range / report.score_stats.mean) * 100.0
@@ -345,8 +358,7 @@ pub fn format_consistency_scorecard(report: &ConsistencyReport) -> String {
     };
     let spread_fmt = format!(
         "{:.2} pts ({:.3}% delta)",
-        report.score_stats.range,
-        spread_pct
+        report.score_stats.range, spread_pct
     );
 
     out.push_str(&format!(
@@ -407,9 +419,12 @@ pub fn format_consistency_scorecard(report: &ConsistencyReport) -> String {
 }
 
 /// Saves the consistency report to a JSON file.
-pub fn save_consistency_report<P: AsRef<Path>>(report: &ConsistencyReport, path: P) -> std::io::Result<()> {
-    let json = serde_json::to_string_pretty(report)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+pub fn save_consistency_report<P: AsRef<Path>>(
+    report: &ConsistencyReport,
+    path: P,
+) -> std::io::Result<()> {
+    let json =
+        serde_json::to_string_pretty(report).map_err(|e| std::io::Error::other(e.to_string()))?;
     fs::write(path, json)
 }
 
@@ -522,7 +537,8 @@ mod tests {
         // Test roundtrip save and load
         let tmp_file = "test_consistency_roundtrip.json";
         let _ = save_consistency_report(&report, tmp_file);
-        let loaded = load_consistency_report(tmp_file).expect("Failed to reload consistency report");
+        let loaded =
+            load_consistency_report(tmp_file).expect("Failed to reload consistency report");
         assert_eq!(loaded.iterations_completed, 2);
         assert_eq!(loaded.score_stats.mean, report.score_stats.mean);
         let _ = std::fs::remove_file(tmp_file);

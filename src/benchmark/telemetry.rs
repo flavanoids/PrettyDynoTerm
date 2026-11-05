@@ -88,13 +88,41 @@ pub struct GpuTelemetryAssessment {
 
 impl GpuTelemetryAssessment {
     pub fn evaluate(snapshots: &[TelemetrySnapshot], final_stats: &HardwareStats) -> Self {
-        let edge_temps: Vec<f32> = snapshots.iter().map(|s| s.edge_temp_c).filter(|&t| t > 0.0).collect();
-        let hotspot_temps: Vec<f32> = snapshots.iter().map(|s| s.hotspot_temp_c).filter(|&t| t > 0.0).collect();
-        let mem_temps: Vec<f32> = snapshots.iter().map(|s| s.mem_temp_c).filter(|&t| t > 0.0).collect();
-        let core_clocks: Vec<f32> = snapshots.iter().map(|s| s.core_clock_mhz as f32).filter(|&c| c > 0.0).collect();
-        let mem_clocks: Vec<f32> = snapshots.iter().map(|s| s.mem_clock_mhz as f32).filter(|&c| c > 0.0).collect();
-        let voltages: Vec<f32> = snapshots.iter().map(|s| s.core_voltage_mv as f32).filter(|&v| v > 0.0).collect();
-        let powers: Vec<f32> = snapshots.iter().map(|s| s.board_power_w).filter(|&p| p > 0.0).collect();
+        let edge_temps: Vec<f32> = snapshots
+            .iter()
+            .map(|s| s.edge_temp_c)
+            .filter(|&t| t > 0.0)
+            .collect();
+        let hotspot_temps: Vec<f32> = snapshots
+            .iter()
+            .map(|s| s.hotspot_temp_c)
+            .filter(|&t| t > 0.0)
+            .collect();
+        let mem_temps: Vec<f32> = snapshots
+            .iter()
+            .map(|s| s.mem_temp_c)
+            .filter(|&t| t > 0.0)
+            .collect();
+        let core_clocks: Vec<f32> = snapshots
+            .iter()
+            .map(|s| s.core_clock_mhz as f32)
+            .filter(|&c| c > 0.0)
+            .collect();
+        let mem_clocks: Vec<f32> = snapshots
+            .iter()
+            .map(|s| s.mem_clock_mhz as f32)
+            .filter(|&c| c > 0.0)
+            .collect();
+        let voltages: Vec<f32> = snapshots
+            .iter()
+            .map(|s| s.core_voltage_mv as f32)
+            .filter(|&v| v > 0.0)
+            .collect();
+        let powers: Vec<f32> = snapshots
+            .iter()
+            .map(|s| s.board_power_w)
+            .filter(|&p| p > 0.0)
+            .collect();
         let fan_rpms: Vec<f32> = snapshots.iter().map(|s| s.fan_rpm as f32).collect();
         let gpu_utils: Vec<f32> = snapshots.iter().map(|s| s.gpu_util_pct).collect();
         let mem_utils: Vec<f32> = snapshots.iter().map(|s| s.mem_util_pct).collect();
@@ -182,13 +210,12 @@ impl GpuTelemetryAssessment {
         };
 
         // Automated Assessment Evaluation
-        let throttling_detected = hotspot_metric.max > 0.0 && (
-            (thermal_headroom_c <= 2.0 && hotspot_metric.max >= 95.0)
+        let throttling_detected = hotspot_metric.max > 0.0
+            && ((thermal_headroom_c <= 2.0 && hotspot_metric.max >= 95.0)
                 || (hotspot_metric.max >= crit_limit)
                 || (core_clock_metric.max > 1800.0
                     && core_clock_metric.p95 < core_clock_metric.max * 0.78
-                    && gpu_util_metric.avg > 85.0)
-        );
+                    && gpu_util_metric.avg > 85.0));
 
         let cooling_efficiency_rating = if hotspot_metric.max == 0.0 || edge_metric.max == 0.0 {
             "UNKNOWN (Thermal Sensors Inactive)".to_string()
@@ -207,9 +234,15 @@ impl GpuTelemetryAssessment {
         } else if throttling_detected {
             "THERMAL THROTTLING — Restricted by thermal ceiling".to_string()
         } else if thermal_headroom_c <= 8.0 {
-            format!("WARM MARGIN — Within {:.1}°C of limit, cooling loaded", thermal_headroom_c)
+            format!(
+                "WARM MARGIN — Within {:.1}°C of limit, cooling loaded",
+                thermal_headroom_c
+            )
         } else {
-            format!("HEALTHY — {:.1}°C thermal headroom, sustained boost", thermal_headroom_c)
+            format!(
+                "HEALTHY — {:.1}°C thermal headroom, sustained boost",
+                thermal_headroom_c
+            )
         };
 
         let power_limit_pegged = final_stats.gpu_power_cap_w > 0.0
@@ -292,7 +325,10 @@ pub fn format_gpu_assessment_box(assessment: &GpuTelemetryAssessment) -> String 
     out.push_str(&format_assessment_line(&power_line, 72));
 
     let fan_rpm_str = if assessment.fan_rpm.max > 0.0 {
-        format!("{:.0} RPM ({:.0}% PWM)", assessment.fan_rpm.max, assessment.peak_fan_pwm_pct)
+        format!(
+            "{:.0} RPM ({:.0}% PWM)",
+            assessment.fan_rpm.max, assessment.peak_fan_pwm_pct
+        )
     } else {
         "0 RPM (Zero-RPM Idle / Passive Mode)".to_string()
     };
@@ -303,7 +339,10 @@ pub fn format_gpu_assessment_box(assessment: &GpuTelemetryAssessment) -> String 
     out.push_str(&format_assessment_line(&fan_line, 72));
 
     let mem_temp_str = if let Some(ref m) = assessment.mem_temp_c {
-        format!("\x1b[38;2;140;150;170m │ VRAM: \x1b[38;2;255;255;255m{:.1}°C\x1b[0m", m.max)
+        format!(
+            "\x1b[38;2;140;150;170m │ VRAM: \x1b[38;2;255;255;255m{:.1}°C\x1b[0m",
+            m.max
+        )
     } else {
         String::new()
     };

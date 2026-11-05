@@ -8,6 +8,12 @@ pub struct TerminalRenderer {
     has_last_colors: bool,
 }
 
+impl Default for TerminalRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TerminalRenderer {
     pub fn new() -> Self {
         Self {
@@ -208,11 +214,11 @@ mod tests {
     fn test_downsample_rgba_downscale() {
         // 4x2 source
         let src = vec![
-            10, 10, 10, 255, 20, 20, 20, 255, 30, 30, 30, 255, 40, 40, 40, 255,
-            50, 50, 50, 255, 60, 60, 60, 255, 70, 70, 70, 255, 80, 80, 80, 255,
+            10, 10, 10, 255, 20, 20, 20, 255, 30, 30, 30, 255, 40, 40, 40, 255, 50, 50, 50, 255,
+            60, 60, 60, 255, 70, 70, 70, 255, 80, 80, 80, 255,
         ];
         // 2x1 destination
-        let mut dst = vec![0u8; 2 * 1 * 4];
+        let mut dst = vec![0u8; 8];
         downsample_rgba(&src, 4, 2, &mut dst, 2, 1);
         assert_eq!(dst.len(), 8);
         assert_eq!(dst[3], 255);

@@ -4,7 +4,7 @@ use crate::gpu::pipeline::{DownsampleUniforms, Uniforms};
 use crate::gpu::{ComputePipelineManager, GpuContext};
 use crate::shaders::{DOWNSAMPLE_SHADER, UNIFIED_SHADER};
 use crate::telemetry::TelemetryCollector;
-use crate::terminal::{format_resolution_tag, get_scene_math_model, visible_len, TerminalRenderer};
+use crate::terminal::{TerminalRenderer, format_resolution_tag, get_scene_math_model, visible_len};
 use std::time::{Duration, Instant};
 
 pub struct TestReport {
@@ -17,36 +17,37 @@ pub struct TestReport {
 pub fn run_self_tests(preferred_gpu: Option<usize>) -> Result<(), Box<dyn std::error::Error>> {
     let overall_start = Instant::now();
 
-    println!("\x1b[38;2;0;255;200;1m================================================================================");
+    println!(
+        "\x1b[38;2;0;255;200;1m================================================================================"
+    );
     println!("          DYNO_TERM SYSTEM SELF-TEST & HARDWARE VERIFICATION SUITE              ");
-    println!("================================================================================\x1b[0m");
+    println!(
+        "================================================================================\x1b[0m"
+    );
 
-    let mut suites: Vec<TestReport> = Vec::new();
-
-    // 1. CPU Simulation Suite
-    suites.push(test_cpu_suite());
-
-    // 2. WGSL Compute Shaders & Uniform Layout
-    suites.push(test_shader_suite());
-
-    // 3. GPU Context & Hardware Pipeline
-    suites.push(test_gpu_suite(preferred_gpu));
-
-    // 4. Telemetry & Hardware Sensors
-    suites.push(test_telemetry_suite());
-
-    // 5. Benchmark Engine & Scorer Math
-    suites.push(test_benchmark_suite());
-
-    // 6. Terminal Engine & ANSI Renderer
-    suites.push(test_terminal_suite());
+    let suites: Vec<TestReport> = vec![
+        // 1. CPU Simulation Suite
+        test_cpu_suite(),
+        // 2. WGSL Compute Shaders & Uniform Layout
+        test_shader_suite(),
+        // 3. GPU Context & Hardware Pipeline
+        test_gpu_suite(preferred_gpu),
+        // 4. Telemetry & Hardware Sensors
+        test_telemetry_suite(),
+        // 5. Benchmark Engine & Scorer Math
+        test_benchmark_suite(),
+        // 6. Terminal Engine & ANSI Renderer
+        test_terminal_suite(),
+    ];
 
     let overall_duration = overall_start.elapsed();
     let total_suites = suites.len();
     let passed_suites = suites.iter().filter(|s| s.passed).count();
     let all_passed = passed_suites == total_suites;
 
-    println!("\x1b[38;2;0;255;200;1m================================================================================");
+    println!(
+        "\x1b[38;2;0;255;200;1m================================================================================"
+    );
     if all_passed {
         println!(
             "\x1b[38;2;0;255;128;1m  RESULT: ALL {} TEST SUITES PASSED (0 failures, completed in {:.2?})",
@@ -60,12 +61,18 @@ pub fn run_self_tests(preferred_gpu: Option<usize>) -> Result<(), Box<dyn std::e
             overall_duration
         );
     }
-    println!("\x1b[38;2;0;255;200;1m================================================================================\x1b[0m");
+    println!(
+        "\x1b[38;2;0;255;200;1m================================================================================\x1b[0m"
+    );
 
     if all_passed {
         Ok(())
     } else {
-        Err(format!("Self-test failed ({} suite(s) failed)", total_suites - passed_suites).into())
+        Err(format!(
+            "Self-test failed ({} suite(s) failed)",
+            total_suites - passed_suites
+        )
+        .into())
     }
 }
 
@@ -79,9 +86,16 @@ fn test_cpu_suite() -> TestReport {
     let mut sim = NBodySimulation::new(particle_count, 160, 80);
     if sim.particles.len() != particle_count {
         passed = false;
-        details.push(format!("Particle count mismatch: expected {}, got {}", particle_count, sim.particles.len()));
+        details.push(format!(
+            "Particle count mismatch: expected {}, got {}",
+            particle_count,
+            sim.particles.len()
+        ));
     } else {
-        details.push(format!("Initialized {} particles across dual colliding galaxies", particle_count));
+        details.push(format!(
+            "Initialized {} particles across dual colliding galaxies",
+            particle_count
+        ));
     }
 
     // Test physics step
@@ -91,7 +105,12 @@ fn test_cpu_suite() -> TestReport {
 
     let has_moved = initial_pos != after_pos;
     let has_nans = sim.particles.iter().any(|p| {
-        !p.x.is_finite() || !p.y.is_finite() || !p.z.is_finite() || !p.vx.is_finite() || !p.vy.is_finite() || !p.vz.is_finite()
+        !p.x.is_finite()
+            || !p.y.is_finite()
+            || !p.z.is_finite()
+            || !p.vx.is_finite()
+            || !p.vy.is_finite()
+            || !p.vz.is_finite()
     });
 
     if !has_moved {
@@ -107,10 +126,15 @@ fn test_cpu_suite() -> TestReport {
     // Test preview rasterizer
     let mut buf = vec![0u8; 160 * 80 * 4];
     sim.rasterize_to_preview(&mut buf, 160, 80);
-    let has_drawn_particles = buf.chunks_exact(4).any(|c| c[0] > 5 || c[1] > 6 || c[2] > 16);
+    let has_drawn_particles = buf
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .any(|c| c[0] > 5 || c[1] > 6 || c[2] > 16);
     if !has_drawn_particles {
         passed = false;
-        details.push("Rasterizer failure: no particle pixels blended into preview buffer".to_string());
+        details
+            .push("Rasterizer failure: no particle pixels blended into preview buffer".to_string());
     } else {
         details.push("Preview frame buffer rasterizer & color blending verified".to_string());
     }
@@ -123,7 +147,14 @@ fn test_cpu_suite() -> TestReport {
     details.push("CPU N-Body zero-particle & buffer bounds fail safes verified".to_string());
 
     let duration = t0.elapsed();
-    print_suite_status(1, 6, "CPU Simulation & N-Body Physics Engine", passed, duration, &details);
+    print_suite_status(
+        1,
+        6,
+        "CPU Simulation & N-Body Physics Engine",
+        passed,
+        duration,
+        &details,
+    );
     TestReport {
         suite_name: "CPU Simulation & N-Body Physics Engine",
         passed,
@@ -159,13 +190,21 @@ fn test_shader_suite() -> TestReport {
     }
     if !missing_unified.is_empty() {
         passed = false;
-        details.push(format!("UNIFIED_SHADER missing tokens: {:?}", missing_unified));
+        details.push(format!(
+            "UNIFIED_SHADER missing tokens: {:?}",
+            missing_unified
+        ));
     } else {
         details.push("UNIFIED_SHADER WGSL structure & 7 GPU acts verified".to_string());
     }
 
     // Verify DOWNSAMPLE_SHADER
-    let ds_checks = ["@compute", "@workgroup_size(16, 16)", "struct DownsampleUniforms", "fn downsample_main("];
+    let ds_checks = [
+        "@compute",
+        "@workgroup_size(16, 16)",
+        "struct DownsampleUniforms",
+        "fn downsample_main(",
+    ];
     let mut missing_ds = Vec::new();
     for token in ds_checks {
         if !DOWNSAMPLE_SHADER.contains(token) {
@@ -174,7 +213,10 @@ fn test_shader_suite() -> TestReport {
     }
     if !missing_ds.is_empty() {
         passed = false;
-        details.push(format!("DOWNSAMPLE_SHADER missing tokens: {:?}", missing_ds));
+        details.push(format!(
+            "DOWNSAMPLE_SHADER missing tokens: {:?}",
+            missing_ds
+        ));
     } else {
         details.push("DOWNSAMPLE_SHADER WGSL structure & workgroups verified".to_string());
     }
@@ -185,19 +227,38 @@ fn test_shader_suite() -> TestReport {
 
     if u_size != 48 {
         passed = false;
-        details.push(format!("Uniforms size mismatch: expected 48, got {}", u_size));
-    } else if u_size % 16 != 0 {
+        details.push(format!(
+            "Uniforms size mismatch: expected 48, got {}",
+            u_size
+        ));
+    } else if !u_size.is_multiple_of(16) {
         passed = false;
-        details.push(format!("Uniforms size must be multiple of 16 for WGSL std140: got {}", u_size));
+        details.push(format!(
+            "Uniforms size must be multiple of 16 for WGSL std140: got {}",
+            u_size
+        ));
     } else if ds_size != 16 {
         passed = false;
-        details.push(format!("DownsampleUniforms size mismatch: expected 16, got {}", ds_size));
+        details.push(format!(
+            "DownsampleUniforms size mismatch: expected 16, got {}",
+            ds_size
+        ));
     } else {
-        details.push(format!("Uniforms ({}B, 16B aligned) and DownsampleUniforms ({}B) layout verified", u_size, ds_size));
+        details.push(format!(
+            "Uniforms ({}B, 16B aligned) and DownsampleUniforms ({}B) layout verified",
+            u_size, ds_size
+        ));
     }
 
     let duration = t0.elapsed();
-    print_suite_status(2, 6, "WGSL Compute Shaders & Uniform Layouts", passed, duration, &details);
+    print_suite_status(
+        2,
+        6,
+        "WGSL Compute Shaders & Uniform Layouts",
+        passed,
+        duration,
+        &details,
+    );
     TestReport {
         suite_name: "WGSL Compute Shaders & Uniform Layouts",
         passed,
@@ -217,7 +278,14 @@ fn test_gpu_suite(preferred_gpu: Option<usize>) -> TestReport {
         passed = false;
         details.push("No compatible GPU adapter found (Vulkan/Metal/DX12)".to_string());
         let duration = t0.elapsed();
-        print_suite_status(3, 6, "GPU Hardware & Compute Pipeline", passed, duration, &details);
+        print_suite_status(
+            3,
+            6,
+            "GPU Hardware & Compute Pipeline",
+            passed,
+            duration,
+            &details,
+        );
         return TestReport {
             suite_name: "GPU Hardware & Compute Pipeline",
             passed,
@@ -235,7 +303,14 @@ fn test_gpu_suite(preferred_gpu: Option<usize>) -> TestReport {
             passed = false;
             details.push(format!("GPU context initialization failed: {}", e));
             let duration = t0.elapsed();
-            print_suite_status(3, 6, "GPU Hardware & Compute Pipeline", passed, duration, &details);
+            print_suite_status(
+                3,
+                6,
+                "GPU Hardware & Compute Pipeline",
+                passed,
+                duration,
+                &details,
+            );
             return TestReport {
                 suite_name: "GPU Hardware & Compute Pipeline",
                 passed,
@@ -246,7 +321,10 @@ fn test_gpu_suite(preferred_gpu: Option<usize>) -> TestReport {
     };
 
     let info = &gpu_ctx.adapter_info;
-    details.push(format!("Active GPU: {} | {:?} | {:?}", info.name, info.backend, info.device_type));
+    details.push(format!(
+        "Active GPU: {} | {:?} | {:?}",
+        info.name, info.backend, info.device_type
+    ));
 
     let mem_info = crate::benchmark::failsafe::GpuMemoryInfo::detect(&gpu_ctx.device);
     let gpu_tier_str = if mem_info.total_vram_mb >= 100_000 {
@@ -264,20 +342,33 @@ fn test_gpu_suite(preferred_gpu: Option<usize>) -> TestReport {
     ));
 
     // Dynamically adapt compute test resolution to GPU VRAM capacity
-    let (test_w, test_h) = mem_info.recommend_resolution(crate::benchmark::failsafe::VramTestTier::Balanced);
+    let (test_w, test_h) =
+        mem_info.recommend_resolution(crate::benchmark::failsafe::VramTestTier::Balanced);
     let single_buf_mb = (test_w as f64 * test_h as f64 * 4.0) / (1024.0 * 1024.0);
     details.push(format!(
         "Dynamically adapted test resolution: {}x{} ({:.1} MB single buffer, {:.2} Mpix)",
-        test_w, test_h, single_buf_mb, (test_w as f64 * test_h as f64) / 1_000_000.0
+        test_w,
+        test_h,
+        single_buf_mb,
+        (test_w as f64 * test_h as f64) / 1_000_000.0
     ));
 
     // Verify Pre-Flight VRAM Headroom Guard
-    let vram_guard_check = crate::benchmark::failsafe::VramHeadroomCheck::evaluate(&gpu_ctx.device, test_w, test_h, None);
+    let vram_guard_check = crate::benchmark::failsafe::VramHeadroomCheck::evaluate(
+        &gpu_ctx.device,
+        test_w,
+        test_h,
+        None,
+    );
     if vram_guard_check.is_ok() {
-        details.push("Pre-flight VRAM headroom & hardware buffer limits guard verified".to_string());
+        details
+            .push("Pre-flight VRAM headroom & hardware buffer limits guard verified".to_string());
     } else {
         passed = false;
-        details.push(format!("Pre-flight VRAM guard failed at adapted {}x{} resolution", test_w, test_h));
+        details.push(format!(
+            "Pre-flight VRAM guard failed at adapted {}x{} resolution",
+            test_w, test_h
+        ));
     }
 
     // Create ComputePipelineManager at dynamically adapted test resolution
@@ -296,7 +387,14 @@ fn test_gpu_suite(preferred_gpu: Option<usize>) -> TestReport {
             passed = false;
             details.push(format!("Pipeline compilation failed: {}", e));
             let duration = t0.elapsed();
-            print_suite_status(3, 6, "GPU Hardware & Compute Pipeline", passed, duration, &details);
+            print_suite_status(
+                3,
+                6,
+                "GPU Hardware & Compute Pipeline",
+                passed,
+                duration,
+                &details,
+            );
             return TestReport {
                 suite_name: "GPU Hardware & Compute Pipeline",
                 passed,
@@ -306,7 +404,12 @@ fn test_gpu_suite(preferred_gpu: Option<usize>) -> TestReport {
         }
     };
 
-    details.push(format!("Pipeline instantiated @ {}x{} ({} pixels)", test_w, test_h, test_w * test_h));
+    details.push(format!(
+        "Pipeline instantiated @ {}x{} ({} pixels)",
+        test_w,
+        test_h,
+        test_w * test_h
+    ));
 
     // Test compute dispatch for Scene 0 (Waves) through Scene 6 (Kinematics)
     let mut preview_buf = vec![0u8; (prev_w * prev_h * 4) as usize];
@@ -335,7 +438,10 @@ fn test_gpu_suite(preferred_gpu: Option<usize>) -> TestReport {
         details.push("All 7 GPU shader scenes compute & VRAM downsampling verified".to_string());
     } else {
         passed = false;
-        details.push(format!("Only {} of 7 GPU scenes produced valid render output", verified_scenes));
+        details.push(format!(
+            "Only {} of 7 GPU scenes produced valid render output",
+            verified_scenes
+        ));
     }
 
     // Verify Out-of-Bounds and Out-of-Memory failsafes
@@ -356,14 +462,26 @@ fn test_gpu_suite(preferred_gpu: Option<usize>) -> TestReport {
     let resize_oob = pipeline.try_resize(0, 0);
 
     if oob_zero.is_err() && oom_huge.is_err() && resize_oob.is_err() {
-        details.push("Out-of-bounds (0x0) & out-of-memory pre-flight fail safes verified (0 crashes)".to_string());
+        details.push(
+            "Out-of-bounds (0x0) & out-of-memory pre-flight fail safes verified (0 crashes)"
+                .to_string(),
+        );
     } else {
         passed = false;
-        details.push("Pre-flight OOB or OOM failsafe check failed to reject invalid request".to_string());
+        details.push(
+            "Pre-flight OOB or OOM failsafe check failed to reject invalid request".to_string(),
+        );
     }
 
     let duration = t0.elapsed();
-    print_suite_status(3, 6, "GPU Hardware & Compute Pipeline", passed, duration, &details);
+    print_suite_status(
+        3,
+        6,
+        "GPU Hardware & Compute Pipeline",
+        passed,
+        duration,
+        &details,
+    );
     TestReport {
         suite_name: "GPU Hardware & Compute Pipeline",
         passed,
@@ -377,14 +495,19 @@ fn test_telemetry_suite() -> TestReport {
     let mut details = Vec::new();
     let mut passed = true;
 
-    let threads = std::thread::available_parallelism().map(|p| p.get()).unwrap_or(1);
+    let threads = std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(1);
     details.push(format!("Detected {} system CPU threads", threads));
 
     let cpu_name = TelemetryCollector::read_cpu_name();
     details.push(format!("CPU Model: {}", cpu_name));
 
     if let Some((total, idle)) = TelemetryCollector::read_proc_stat() {
-        details.push(format!("/proc/stat active: total ticks {}, idle ticks {}", total, idle));
+        details.push(format!(
+            "/proc/stat active: total ticks {}, idle ticks {}",
+            total, idle
+        ));
     } else {
         details.push("/proc/stat not readable (fallback mode active)".to_string());
     }
@@ -420,7 +543,14 @@ fn test_telemetry_suite() -> TestReport {
     }
 
     let duration = t0.elapsed();
-    print_suite_status(4, 6, "Telemetry & Hardware Sensors", passed, duration, &details);
+    print_suite_status(
+        4,
+        6,
+        "Telemetry & Hardware Sensors",
+        passed,
+        duration,
+        &details,
+    );
     TestReport {
         suite_name: "Telemetry & Hardware Sensors",
         passed,
@@ -435,8 +565,24 @@ fn test_benchmark_suite() -> TestReport {
     let mut passed = true;
 
     let mut scorer = BenchmarkScorer::new();
-    scorer.record_frame(Duration::from_millis(16), 50.0, 60.0, 75.0, 100.0, 2048, 2000);
-    scorer.record_frame(Duration::from_millis(14), 65.0, 75.0, 95.0, 140.0, 4096, 2500);
+    scorer.record_frame(
+        Duration::from_millis(16),
+        50.0,
+        60.0,
+        75.0,
+        100.0,
+        2048,
+        2000,
+    );
+    scorer.record_frame(
+        Duration::from_millis(14),
+        65.0,
+        75.0,
+        95.0,
+        140.0,
+        4096,
+        2500,
+    );
 
     if scorer.peak_temp != 65.0 || scorer.peak_power != 140.0 || scorer.peak_clock != 2500 {
         passed = false;
@@ -450,7 +596,10 @@ fn test_benchmark_suite() -> TestReport {
         passed = false;
         details.push("BenchmarkScorer scene result calculation failed".to_string());
     } else {
-        details.push(format!("Scene result scoring & FPS statistics verified (score: {:.2})", res.score));
+        details.push(format!(
+            "Scene result scoring & FPS statistics verified (score: {:.2})",
+            res.score
+        ));
     }
 
     // JSON round-trip
@@ -481,7 +630,8 @@ fn test_benchmark_suite() -> TestReport {
         Ok(json) => match serde_json::from_str::<BenchmarkReport>(&json) {
             Ok(parsed) => {
                 if (parsed.overall_score - report.overall_score).abs() < 1e-4 {
-                    details.push("BenchmarkReport JSON serialization round-trip verified".to_string());
+                    details
+                        .push("BenchmarkReport JSON serialization round-trip verified".to_string());
                 } else {
                     passed = false;
                     details.push("JSON deserialization score mismatch".to_string());
@@ -499,7 +649,14 @@ fn test_benchmark_suite() -> TestReport {
     }
 
     let duration = t0.elapsed();
-    print_suite_status(5, 6, "Benchmark Engine & Scorer Math", passed, duration, &details);
+    print_suite_status(
+        5,
+        6,
+        "Benchmark Engine & Scorer Math",
+        passed,
+        duration,
+        &details,
+    );
     TestReport {
         suite_name: "Benchmark Engine & Scorer Math",
         passed,
@@ -517,7 +674,10 @@ fn test_terminal_suite() -> TestReport {
     let tag_4k = format_resolution_tag(3840, 2160);
     if !tag_4k.contains("4K") {
         passed = false;
-        details.push(format!("Resolution tag mismatch: expected '4K', got '{}'", tag_4k));
+        details.push(format!(
+            "Resolution tag mismatch: expected '4K', got '{}'",
+            tag_4k
+        ));
     } else {
         details.push("Resolution formatting preset tags verified".to_string());
     }
@@ -533,14 +693,20 @@ fn test_terminal_suite() -> TestReport {
         passed = false;
         details.push("One or more scene math model descriptions were empty".to_string());
     } else {
-        details.push("Act math model descriptions (Gerstner, Mandelbulb, Schwarzschild, etc.) verified".to_string());
+        details.push(
+            "Act math model descriptions (Gerstner, Mandelbulb, Schwarzschild, etc.) verified"
+                .to_string(),
+        );
     }
 
     // Test visible_len
     let colored = "\x1b[38;2;0;255;200;1mHello\x1b[0m";
     if visible_len(colored) != 5 {
         passed = false;
-        details.push(format!("ANSI visible_len mismatch: expected 5, got {}", visible_len(colored)));
+        details.push(format!(
+            "ANSI visible_len mismatch: expected 5, got {}",
+            visible_len(colored)
+        ));
     } else {
         details.push("ANSI escape sequence width stripping verified".to_string());
     }
@@ -551,7 +717,14 @@ fn test_terminal_suite() -> TestReport {
     details.push("TerminalRenderer half-block compositor instantiated".to_string());
 
     let duration = t0.elapsed();
-    print_suite_status(6, 6, "Terminal Engine & ANSI Renderer", passed, duration, &details);
+    print_suite_status(
+        6,
+        6,
+        "Terminal Engine & ANSI Renderer",
+        passed,
+        duration,
+        &details,
+    );
     TestReport {
         suite_name: "Terminal Engine & ANSI Renderer",
         passed,
@@ -579,6 +752,9 @@ fn print_suite_status(
         index, total, name, status_str, duration
     );
     for d in details {
-        println!("        \x1b[38;2;120;120;140m•\x1b[0m \x1b[38;2;200;210;220m{}\x1b[0m", d);
+        println!(
+            "        \x1b[38;2;120;120;140m•\x1b[0m \x1b[38;2;200;210;220m{}\x1b[0m",
+            d
+        );
     }
 }

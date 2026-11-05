@@ -29,7 +29,11 @@ impl GpuContext {
 
         let selected_index = if let Some(idx) = preferred_adapter_index {
             if idx >= adapters.len() {
-                return Err(format!("Adapter index {} out of bounds (found {})", idx, adapters.len()));
+                return Err(format!(
+                    "Adapter index {} out of bounds (found {})",
+                    idx,
+                    adapters.len()
+                ));
             }
             idx
         } else {

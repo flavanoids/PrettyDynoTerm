@@ -162,14 +162,22 @@ impl Hud {
                 format!(" {} │ {} ", self.scene_title, self.math_model),
             )
         } else if budget >= 55 {
-            let res_short = self.resolution_label.split_whitespace().next().unwrap_or("4K");
+            let res_short = self
+                .resolution_label
+                .split_whitespace()
+                .next()
+                .unwrap_or("4K");
             (
                 " DYNO_TERM ".to_string(),
                 format!(" {} ", res_short),
                 format!(" {} │ {} ", self.scene_title, self.math_model),
             )
         } else if budget >= 36 {
-            let res_short = self.resolution_label.split_whitespace().next().unwrap_or("4K");
+            let res_short = self
+                .resolution_label
+                .split_whitespace()
+                .next()
+                .unwrap_or("4K");
             let scene_short = self
                 .scene_title
                 .replace(" (GPU)", "")
@@ -181,7 +189,11 @@ impl Hud {
                 format!(" {} ", scene_short),
             )
         } else {
-            let res_short = self.resolution_label.split_whitespace().next().unwrap_or("4K");
+            let res_short = self
+                .resolution_label
+                .split_whitespace()
+                .next()
+                .unwrap_or("4K");
             let scene_words: Vec<&str> = self.scene_title.split_whitespace().collect();
             let scene_word = scene_words.first().unwrap_or(&"BENCH");
             (
@@ -259,7 +271,10 @@ impl Hud {
             } else if sep_budget >= 35 {
                 (
                     " TELEMETRY ".to_string(),
-                    format!(" {}ACT {}/{}: {:>3.0}% ", iter_prefix, self.act_index, self.act_total, self.act_progress_pct),
+                    format!(
+                        " {}ACT {}/{}: {:>3.0}% ",
+                        iter_prefix, self.act_index, self.act_total, self.act_progress_pct
+                    ),
                 )
             } else {
                 (
@@ -273,7 +288,10 @@ impl Hud {
             if sep_budget >= 48 {
                 (
                     " LIVE TELEMETRY ".to_string(),
-                    format!(" DEMO: {:02}:{:02} │ {} FRAMES ", mins, secs, self.demo_frame_count),
+                    format!(
+                        " DEMO: {:02}:{:02} │ {} FRAMES ",
+                        mins, secs, self.demo_frame_count
+                    ),
                 )
             } else if sep_budget >= 28 {
                 (
@@ -281,10 +299,7 @@ impl Hud {
                     format!(" DEMO: {:02}:{:02} ", mins, secs),
                 )
             } else {
-                (
-                    " LIVE ".to_string(),
-                    format!(" {:02}:{:02} ", mins, secs),
-                )
+                (" LIVE ".to_string(), format!(" {:02}:{:02} ", mins, secs))
             }
         };
 
@@ -323,7 +338,11 @@ impl Hud {
         } else {
             val_color // Cool Mint
         };
-        let pwr_col = if stats.gpu_power_w >= 140.0 { highlight } else { val_color };
+        let pwr_col = if stats.gpu_power_w >= 140.0 {
+            highlight
+        } else {
+            val_color
+        };
         let util_col = if stats.gpu_util_pct >= 90.0 {
             val_color // Neon mint - saturated
         } else if stats.gpu_util_pct >= 50.0 {
@@ -348,18 +367,32 @@ impl Hud {
                 stats.gpu_clock_mhz, stats.gpu_temp_c, stats.gpu_power_w
             )
         } else {
-            format!("{val_color}{}M {temp_col}{:.0}°C", stats.gpu_clock_mhz, stats.gpu_temp_c)
+            format!(
+                "{val_color}{}M {temp_col}{:.0}°C",
+                stats.gpu_clock_mhz, stats.gpu_temp_c
+            )
         };
 
-        let vram_pct = if stats.vram_total_mb > 0 {
-            ((stats.vram_used_mb * 100) / stats.vram_total_mb).min(100)
+        let vram_pct = (stats.vram_used_mb * 100)
+            .checked_div(stats.vram_total_mb)
+            .unwrap_or(0)
+            .min(100);
+        let gpu_bar_len = if c1_w >= 32 {
+            5
+        } else if c1_w >= 26 {
+            4
         } else {
-            0
+            3
         };
-        let gpu_bar_len = if c1_w >= 32 { 5 } else if c1_w >= 26 { 4 } else { 3 };
         let gpu_bar = make_bar(stats.gpu_util_pct, gpu_bar_len);
 
-        let vram_bar_len = if c1_w >= 32 { 5 } else if c1_w >= 26 { 4 } else { 3 };
+        let vram_bar_len = if c1_w >= 32 {
+            5
+        } else if c1_w >= 26 {
+            4
+        } else {
+            3
+        };
         let vram_bar = make_bar(vram_pct as f32, vram_bar_len);
 
         let c1_l3 = if c1_w >= 36 {
@@ -384,7 +417,13 @@ impl Hud {
         // ─────────────────────────────────────────────
         // Column 2: Frametime, Live Sparkline, Pacing, CPU
         // ─────────────────────────────────────────────
-        let spark_w = if c2_w >= 32 { 10 } else if c2_w >= 24 { 6 } else { 3 };
+        let spark_w = if c2_w >= 32 {
+            10
+        } else if c2_w >= 24 {
+            6
+        } else {
+            3
+        };
         let spark = self.generate_sparkline(spark_w);
 
         let c2_l1 = if c2_w >= 26 {
@@ -410,7 +449,13 @@ impl Hud {
             format!("{val_color}{:>4.0} FPS", self.fps)
         };
 
-        let cpu_bar_w = if c2_w >= 28 { 8 } else if c2_w >= 20 { 5 } else { 3 };
+        let cpu_bar_w = if c2_w >= 28 {
+            8
+        } else if c2_w >= 20 {
+            5
+        } else {
+            3
+        };
         let cpu_bar = make_bar(stats.cpu_usage_pct, cpu_bar_w);
         let c2_l3 = if c2_w >= 26 {
             format!(
@@ -418,7 +463,10 @@ impl Hud {
                 stats.cpu_usage_pct, stats.cpu_threads
             )
         } else if c2_w >= 18 {
-            format!("{label_color}CPU: {val_color}[{cpu_bar}] {:>3.0}%", stats.cpu_usage_pct)
+            format!(
+                "{label_color}CPU: {val_color}[{cpu_bar}] {:>3.0}%",
+                stats.cpu_usage_pct
+            )
         } else {
             format!("{label_color}CPU: {val_color}{:>3.0}%", stats.cpu_usage_pct)
         };
@@ -427,16 +475,28 @@ impl Hud {
         // Column 3: Progress & Score Ticker / Demo Status
         // ─────────────────────────────────────────────
         let (c3_l1, c3_l2, c3_l3) = if self.is_benchmark {
-            let bar_w = if c3_w >= 24 { 10 } else if c3_w >= 16 { 6 } else { 3 };
+            let bar_w = if c3_w >= 24 {
+                10
+            } else if c3_w >= 16 {
+                6
+            } else {
+                3
+            };
             let p_bar = make_bar(self.act_progress_pct, bar_w);
             let l1 = if c3_w >= 18 {
-                format!("{label_color}Act: {highlight}[{p_bar}] {val_color}{:>3.0}%", self.act_progress_pct)
+                format!(
+                    "{label_color}Act: {highlight}[{p_bar}] {val_color}{:>3.0}%",
+                    self.act_progress_pct
+                )
             } else {
                 format!("{highlight}[{p_bar}]")
             };
 
             let l2 = if c3_w >= 18 {
-                format!("{label_color}Rays: {val_color}{:>5.2} Giga/s", self.rays_per_sec)
+                format!(
+                    "{label_color}Rays: {val_color}{:>5.2} Giga/s",
+                    self.rays_per_sec
+                )
             } else if c3_w >= 12 {
                 format!("{val_color}{:>5.2} G/s", self.rays_per_sec)
             } else {
@@ -444,7 +504,10 @@ impl Hud {
             };
 
             let l3 = if c3_w >= 18 {
-                format!("{label_color}Score: {highlight}{:>7.2} pts", self.current_score)
+                format!(
+                    "{label_color}Score: {highlight}{:>7.2} pts",
+                    self.current_score
+                )
             } else {
                 format!("{highlight}{:>6.1}", self.current_score)
             };
@@ -453,13 +516,21 @@ impl Hud {
             let mins = (self.demo_elapsed_secs / 60.0) as u32;
             let secs = (self.demo_elapsed_secs % 60.0) as u32;
             let l1 = if c3_w >= 20 {
-                format!("{label_color}Time: {val_color}{:02}:{:02} {label_color}({:04}f)", mins, secs, self.demo_frame_count % 10000)
+                format!(
+                    "{label_color}Time: {val_color}{:02}:{:02} {label_color}({:04}f)",
+                    mins,
+                    secs,
+                    self.demo_frame_count % 10000
+                )
             } else {
                 format!("{label_color}T: {val_color}{:02}:{:02}", mins, secs)
             };
 
             let l2 = if c3_w >= 18 {
-                format!("{label_color}Rays: {val_color}{:>5.2} Giga/s", self.rays_per_sec)
+                format!(
+                    "{label_color}Rays: {val_color}{:>5.2} Giga/s",
+                    self.rays_per_sec
+                )
             } else {
                 format!("{val_color}{:>5.2} G/s", self.rays_per_sec)
             };
@@ -673,7 +744,11 @@ mod tests {
     fn test_get_scene_math_models() {
         for scene_id in 0..=7 {
             let desc = get_scene_math_model(scene_id);
-            assert!(!desc.is_empty(), "Scene {} math model should not be empty", scene_id);
+            assert!(
+                !desc.is_empty(),
+                "Scene {} math model should not be empty",
+                scene_id
+            );
         }
     }
 }

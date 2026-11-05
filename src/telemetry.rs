@@ -9,24 +9,24 @@ use std::time::{Duration, Instant};
 pub struct HardwareStats {
     pub gpu_name: String,
     pub gpu_clock_mhz: u32,
-    pub gpu_mem_clock_mhz: u32, // Memory clock in MHz
-    pub gpu_voltage_mv: u32,    // GPU core voltage in millivolts
-    pub gpu_util_pct: f32,      // GPU core load percentage (0 - 100%)
-    pub mem_util_pct: f32,      // Memory controller load percentage (0 - 100%)
-    pub gpu_temp_c: f32,        // Edge / Package temp (standard GPU temp matching btop)
-    pub gpu_hotspot_c: f32,     // Junction / Hotspot temp (silicon localized peak)
-    pub gpu_mem_temp_c: f32,    // VRAM / Memory temp (if available)
-    pub gpu_temp_crit_c: f32,   // Critical thermal throttle threshold for edge
-    pub gpu_hotspot_crit_c: f32,// Critical thermal throttle threshold for junction
-    pub gpu_fan_rpm: u32,       // Current fan speed in RPM
-    pub gpu_fan_max_rpm: u32,   // Maximum rated fan speed
-    pub gpu_fan_pwm: u32,       // PWM duty cycle (0 - 255)
-    pub gpu_power_w: f32,       // Current board power draw (Watts)
-    pub gpu_power_cap_w: f32,   // Board power limit / PPT cap (Watts)
+    pub gpu_mem_clock_mhz: u32,  // Memory clock in MHz
+    pub gpu_voltage_mv: u32,     // GPU core voltage in millivolts
+    pub gpu_util_pct: f32,       // GPU core load percentage (0 - 100%)
+    pub mem_util_pct: f32,       // Memory controller load percentage (0 - 100%)
+    pub gpu_temp_c: f32,         // Edge / Package temp (standard GPU temp matching btop)
+    pub gpu_hotspot_c: f32,      // Junction / Hotspot temp (silicon localized peak)
+    pub gpu_mem_temp_c: f32,     // VRAM / Memory temp (if available)
+    pub gpu_temp_crit_c: f32,    // Critical thermal throttle threshold for edge
+    pub gpu_hotspot_crit_c: f32, // Critical thermal throttle threshold for junction
+    pub gpu_fan_rpm: u32,        // Current fan speed in RPM
+    pub gpu_fan_max_rpm: u32,    // Maximum rated fan speed
+    pub gpu_fan_pwm: u32,        // PWM duty cycle (0 - 255)
+    pub gpu_power_w: f32,        // Current board power draw (Watts)
+    pub gpu_power_cap_w: f32,    // Board power limit / PPT cap (Watts)
     pub vram_used_mb: u64,
     pub vram_total_mb: u64,
-    pub vram_vendor: String,    // "Samsung GDDR6", "Micron", etc.
-    pub pcie_link: String,      // "16.0 GT/s, x8"
+    pub vram_vendor: String, // "Samsung GDDR6", "Micron", etc.
+    pub pcie_link: String,   // "16.0 GT/s, x8"
     pub cpu_name: String,
     pub cpu_usage_pct: f32,
     pub cpu_threads: usize,
@@ -126,8 +126,8 @@ impl TelemetryCollector {
                     last_cpu_total = curr_total;
                     last_cpu_idle = curr_idle;
                     if total_diff > 0 {
-                        cpu_usage_pct =
-                            ((1.0 - (idle_diff as f32 / total_diff as f32)) * 100.0).clamp(0.0, 100.0);
+                        cpu_usage_pct = ((1.0 - (idle_diff as f32 / total_diff as f32)) * 100.0)
+                            .clamp(0.0, 100.0);
                     }
                 }
 
@@ -137,28 +137,32 @@ impl TelemetryCollector {
                 let mut mem_clock_mhz = hw.mem_clock_mhz;
 
                 // If core clock is 0 or low, check pp_dpm_sclk for active DPM clock
-                if clock_mhz == 0 {
-                    if let Some(ref drm) = vram_clone {
-                        let (active_dpm, max_dpm) = Self::read_pp_dpm_sclk(drm);
-                        if active_dpm > 0 {
-                            clock_mhz = active_dpm;
-                        } else if last_active_time.elapsed() < Duration::from_millis(1500) && max_dpm > 0 {
-                            clock_mhz = last_active_clock.max(max_dpm);
-                        }
+                if clock_mhz == 0
+                    && let Some(ref drm) = vram_clone
+                {
+                    let (active_dpm, max_dpm) = Self::read_pp_dpm_sclk(drm);
+                    if active_dpm > 0 {
+                        clock_mhz = active_dpm;
+                    } else if last_active_time.elapsed() < Duration::from_millis(1500)
+                        && max_dpm > 0
+                    {
+                        clock_mhz = last_active_clock.max(max_dpm);
                     }
                 }
 
-                if mem_clock_mhz == 0 {
-                    if let Some(ref drm) = vram_clone {
-                        mem_clock_mhz = Self::read_pp_dpm_mclk(drm);
-                    }
+                if mem_clock_mhz == 0
+                    && let Some(ref drm) = vram_clone
+                {
+                    mem_clock_mhz = Self::read_pp_dpm_mclk(drm);
                 }
 
                 if clock_mhz > 0 {
                     last_active_clock = clock_mhz;
                     last_active_time = Instant::now();
                     peak_clock = peak_clock.max(clock_mhz);
-                } else if last_active_time.elapsed() < Duration::from_millis(1500) && last_active_clock > 0 {
+                } else if last_active_time.elapsed() < Duration::from_millis(1500)
+                    && last_active_clock > 0
+                {
                     // Smooth momentary GFXOFF gaps between dispatches
                     clock_mhz = last_active_clock;
                 }
@@ -232,96 +236,98 @@ impl TelemetryCollector {
                 if let Ok(freq_hz) = freq_str.trim().parse::<u64>() {
                     sensors.clock_mhz = (freq_hz / 1_000_000) as u32;
                 }
-            } else if let Ok(freq_str) = fs::read_to_string(format!("{}/freq2_input", path)) {
-                if let Ok(freq_hz) = freq_str.trim().parse::<u64>() {
-                    sensors.clock_mhz = (freq_hz / 1_000_000) as u32;
-                }
+            } else if let Ok(freq_str) = fs::read_to_string(format!("{}/freq2_input", path))
+                && let Ok(freq_hz) = freq_str.trim().parse::<u64>()
+            {
+                sensors.clock_mhz = (freq_hz / 1_000_000) as u32;
             }
 
             // Read memory clock
-            if let Ok(freq_str) = fs::read_to_string(format!("{}/freq2_input", path)) {
-                if let Ok(freq_hz) = freq_str.trim().parse::<u64>() {
-                    sensors.mem_clock_mhz = (freq_hz / 1_000_000) as u32;
-                }
+            if let Ok(freq_str) = fs::read_to_string(format!("{}/freq2_input", path))
+                && let Ok(freq_hz) = freq_str.trim().parse::<u64>()
+            {
+                sensors.mem_clock_mhz = (freq_hz / 1_000_000) as u32;
             }
 
             // Read core voltage (in0_input is typically vddgfx in mV)
-            if let Ok(in0_str) = fs::read_to_string(format!("{}/in0_input", path)) {
-                if let Ok(v) = in0_str.trim().parse::<u32>() {
-                    sensors.voltage_mv = v;
-                }
+            if let Ok(in0_str) = fs::read_to_string(format!("{}/in0_input", path))
+                && let Ok(v) = in0_str.trim().parse::<u32>()
+            {
+                sensors.voltage_mv = v;
             }
 
             // Read fan speed (fan1_input is in RPM)
-            if let Ok(fan_str) = fs::read_to_string(format!("{}/fan1_input", path)) {
-                if let Ok(rpm) = fan_str.trim().parse::<u32>() {
-                    sensors.fan_rpm = rpm;
-                }
+            if let Ok(fan_str) = fs::read_to_string(format!("{}/fan1_input", path))
+                && let Ok(rpm) = fan_str.trim().parse::<u32>()
+            {
+                sensors.fan_rpm = rpm;
             }
-            if let Ok(fan_max_str) = fs::read_to_string(format!("{}/fan1_max", path)) {
-                if let Ok(max_rpm) = fan_max_str.trim().parse::<u32>() {
-                    sensors.fan_max_rpm = max_rpm;
-                }
+            if let Ok(fan_max_str) = fs::read_to_string(format!("{}/fan1_max", path))
+                && let Ok(max_rpm) = fan_max_str.trim().parse::<u32>()
+            {
+                sensors.fan_max_rpm = max_rpm;
             }
-            if let Ok(pwm_str) = fs::read_to_string(format!("{}/pwm1", path)) {
-                if let Ok(pwm) = pwm_str.trim().parse::<u32>() {
-                    sensors.fan_pwm = pwm;
-                }
+            if let Ok(pwm_str) = fs::read_to_string(format!("{}/pwm1", path))
+                && let Ok(pwm) = pwm_str.trim().parse::<u32>()
+            {
+                sensors.fan_pwm = pwm;
             }
 
             // Read critical temperature thresholds
-            if let Ok(crit_str) = fs::read_to_string(format!("{}/temp1_crit", path)) {
-                if let Ok(mc) = crit_str.trim().parse::<f32>() {
-                    sensors.temp_crit_c = mc / 1000.0;
-                }
+            if let Ok(crit_str) = fs::read_to_string(format!("{}/temp1_crit", path))
+                && let Ok(mc) = crit_str.trim().parse::<f32>()
+            {
+                sensors.temp_crit_c = mc / 1000.0;
             }
-            if let Ok(crit_str) = fs::read_to_string(format!("{}/temp2_crit", path)) {
-                if let Ok(mc) = crit_str.trim().parse::<f32>() {
-                    sensors.hotspot_crit_c = mc / 1000.0;
-                }
+            if let Ok(crit_str) = fs::read_to_string(format!("{}/temp2_crit", path))
+                && let Ok(mc) = crit_str.trim().parse::<f32>()
+            {
+                sensors.hotspot_crit_c = mc / 1000.0;
             }
 
             // Read GPU temperature sensors and map by sensor label.
             for i in 1..=8 {
                 let input_path = format!("{}/temp{}_input", path, i);
-                if let Ok(temp_str) = fs::read_to_string(&input_path) {
-                    if let Ok(temp_mc) = temp_str.trim().parse::<f32>() {
-                        let temp_val = temp_mc / 1000.0;
-                        let label_path = format!("{}/temp{}_label", path, i);
-                        let label = fs::read_to_string(&label_path)
-                            .unwrap_or_default()
-                            .trim()
-                            .to_lowercase();
+                if let Ok(temp_str) = fs::read_to_string(&input_path)
+                    && let Ok(temp_mc) = temp_str.trim().parse::<f32>()
+                {
+                    let temp_val = temp_mc / 1000.0;
+                    let label_path = format!("{}/temp{}_label", path, i);
+                    let label = fs::read_to_string(&label_path)
+                        .unwrap_or_default()
+                        .trim()
+                        .to_lowercase();
 
-                        if label.contains("edge")
-                            || label.contains("gpu")
-                            || label.contains("package")
-                            || label.contains("composite")
-                            || label.contains("die")
-                        {
-                            sensors.edge_temp_c = temp_val;
-                        } else if label.contains("junction") || label.contains("hotspot") || label.contains("tctl") {
-                            sensors.hotspot_temp_c = temp_val;
-                        } else if label.contains("mem") || label.contains("vram") {
-                            sensors.mem_temp_c = temp_val;
-                        } else if i == 1 && sensors.edge_temp_c == 0.0 {
-                            sensors.edge_temp_c = temp_val;
-                        } else if i == 2 && sensors.hotspot_temp_c == 0.0 {
-                            sensors.hotspot_temp_c = temp_val;
-                        } else if i == 3 && sensors.mem_temp_c == 0.0 {
-                            sensors.mem_temp_c = temp_val;
-                        }
+                    if label.contains("edge")
+                        || label.contains("gpu")
+                        || label.contains("package")
+                        || label.contains("composite")
+                        || label.contains("die")
+                    {
+                        sensors.edge_temp_c = temp_val;
+                    } else if label.contains("junction")
+                        || label.contains("hotspot")
+                        || label.contains("tctl")
+                    {
+                        sensors.hotspot_temp_c = temp_val;
+                    } else if label.contains("mem") || label.contains("vram") {
+                        sensors.mem_temp_c = temp_val;
+                    } else if i == 1 && sensors.edge_temp_c == 0.0 {
+                        sensors.edge_temp_c = temp_val;
+                    } else if i == 2 && sensors.hotspot_temp_c == 0.0 {
+                        sensors.hotspot_temp_c = temp_val;
+                    } else if i == 3 && sensors.mem_temp_c == 0.0 {
+                        sensors.mem_temp_c = temp_val;
                     }
                 }
             }
 
             // Fallback: if no edge temp identified but temp1_input exists
-            if sensors.edge_temp_c == 0.0 {
-                if let Ok(temp_str) = fs::read_to_string(format!("{}/temp1_input", path)) {
-                    if let Ok(temp_mc) = temp_str.trim().parse::<f32>() {
-                        sensors.edge_temp_c = temp_mc / 1000.0;
-                    }
-                }
+            if sensors.edge_temp_c == 0.0
+                && let Ok(temp_str) = fs::read_to_string(format!("{}/temp1_input", path))
+                && let Ok(temp_mc) = temp_str.trim().parse::<f32>()
+            {
+                sensors.edge_temp_c = temp_mc / 1000.0;
             }
 
             // If edge temp still not found, fallback to hotspot
@@ -334,17 +340,17 @@ impl TelemetryCollector {
                 if let Ok(pwr_uw) = pwr_str.trim().parse::<f32>() {
                     sensors.power_w = pwr_uw / 1_000_000.0;
                 }
-            } else if let Ok(pwr_str) = fs::read_to_string(format!("{}/power1_input", path)) {
-                if let Ok(pwr_uw) = pwr_str.trim().parse::<f32>() {
-                    sensors.power_w = pwr_uw / 1_000_000.0;
-                }
+            } else if let Ok(pwr_str) = fs::read_to_string(format!("{}/power1_input", path))
+                && let Ok(pwr_uw) = pwr_str.trim().parse::<f32>()
+            {
+                sensors.power_w = pwr_uw / 1_000_000.0;
             }
 
             // Read GPU power cap / limit
-            if let Ok(cap_str) = fs::read_to_string(format!("{}/power1_cap", path)) {
-                if let Ok(cap_uw) = cap_str.trim().parse::<f32>() {
-                    sensors.power_cap_w = cap_uw / 1_000_000.0;
-                }
+            if let Ok(cap_str) = fs::read_to_string(format!("{}/power1_cap", path))
+                && let Ok(cap_uw) = cap_str.trim().parse::<f32>()
+            {
+                sensors.power_cap_w = cap_uw / 1_000_000.0;
             }
         }
 
@@ -370,51 +376,50 @@ impl TelemetryCollector {
     }
 
     fn read_mem_busy_percent(drm_path: &Option<String>) -> f32 {
-        if let Some(path) = drm_path {
-            if let Ok(content) = fs::read_to_string(format!("{}/mem_busy_percent", path)) {
-                if let Ok(pct) = content.trim().parse::<f32>() {
-                    return pct.clamp(0.0, 100.0);
-                }
-            }
+        if let Some(path) = drm_path
+            && let Ok(content) = fs::read_to_string(format!("{}/mem_busy_percent", path))
+            && let Ok(pct) = content.trim().parse::<f32>()
+        {
+            return pct.clamp(0.0, 100.0);
         }
         0.0
     }
 
     fn read_vram_vendor(drm_path: &Option<String>) -> String {
-        if let Some(path) = drm_path {
-            if let Ok(vendor) = fs::read_to_string(format!("{}/mem_info_vram_vendor", path)) {
-                let trimmed = vendor.trim();
-                if !trimmed.is_empty() {
-                    return match trimmed.to_lowercase().as_str() {
-                        "samsung" => "Samsung GDDR6".to_string(),
-                        "micron" => "Micron GDDR6".to_string(),
-                        "hynix" | "skhynix" => "SK Hynix GDDR6".to_string(),
-                        other => other.to_uppercase(),
-                    };
-                }
+        if let Some(path) = drm_path
+            && let Ok(vendor) = fs::read_to_string(format!("{}/mem_info_vram_vendor", path))
+        {
+            let trimmed = vendor.trim();
+            if !trimmed.is_empty() {
+                return match trimmed.to_lowercase().as_str() {
+                    "samsung" => "Samsung GDDR6".to_string(),
+                    "micron" => "Micron GDDR6".to_string(),
+                    "hynix" | "skhynix" => "SK Hynix GDDR6".to_string(),
+                    other => other.to_uppercase(),
+                };
             }
         }
         String::new()
     }
 
     fn read_pcie_link(drm_path: &Option<String>) -> String {
-        if let Some(path) = drm_path {
-            if let Ok(content) = fs::read_to_string(format!("{}/pp_dpm_pcie", path)) {
-                for line in content.lines() {
-                    if line.contains('*') {
-                        let cleaned = line.replace('*', "");
-                        let parts: Vec<&str> = cleaned.split_whitespace().collect();
-                        for (i, &p) in parts.iter().enumerate() {
-                            if p.to_lowercase().contains("gt/s") {
-                                let speed = p.trim_end_matches(',');
-                                if i + 1 < parts.len() {
-                                    return format!("PCIe {} ({})", speed, parts[i + 1]);
-                                }
-                                return format!("PCIe {}", speed);
+        if let Some(path) = drm_path
+            && let Ok(content) = fs::read_to_string(format!("{}/pp_dpm_pcie", path))
+        {
+            for line in content.lines() {
+                if line.contains('*') {
+                    let cleaned = line.replace('*', "");
+                    let parts: Vec<&str> = cleaned.split_whitespace().collect();
+                    for (i, &p) in parts.iter().enumerate() {
+                        if p.to_lowercase().contains("gt/s") {
+                            let speed = p.trim_end_matches(',');
+                            if i + 1 < parts.len() {
+                                return format!("PCIe {} ({})", speed, parts[i + 1]);
                             }
+                            return format!("PCIe {}", speed);
                         }
-                        return cleaned.trim().to_string();
                     }
+                    return cleaned.trim().to_string();
                 }
             }
         }
@@ -480,20 +485,20 @@ impl TelemetryCollector {
     fn read_gpu_utilization(drm_path: &Option<String>) -> f32 {
         if let Some(path) = drm_path {
             // 1. AMD gpu_busy_percent (standard sysfs metric, 0-100)
-            if let Ok(content) = fs::read_to_string(format!("{}/gpu_busy_percent", path)) {
-                if let Ok(pct) = content.trim().parse::<f32>() {
-                    return pct.clamp(0.0, 100.0);
-                }
+            if let Ok(content) = fs::read_to_string(format!("{}/gpu_busy_percent", path))
+                && let Ok(pct) = content.trim().parse::<f32>()
+            {
+                return pct.clamp(0.0, 100.0);
             }
         }
 
         // 2. Scan card0..card4 for gpu_busy_percent
         for card_idx in 0..4 {
             let candidate = format!("/sys/class/drm/card{}/device/gpu_busy_percent", card_idx);
-            if let Ok(content) = fs::read_to_string(&candidate) {
-                if let Ok(pct) = content.trim().parse::<f32>() {
-                    return pct.clamp(0.0, 100.0);
-                }
+            if let Ok(content) = fs::read_to_string(&candidate)
+                && let Ok(pct) = content.trim().parse::<f32>()
+            {
+                return pct.clamp(0.0, 100.0);
             }
         }
 
@@ -501,16 +506,20 @@ impl TelemetryCollector {
         for card_idx in 0..4 {
             let act_path = format!("/sys/class/drm/card{}/gt_act_freq_mhz", card_idx);
             let max_path = format!("/sys/class/drm/card{}/gt_max_freq_mhz", card_idx);
-            if let (Ok(act_str), Ok(max_str)) = (fs::read_to_string(&act_path), fs::read_to_string(&max_path)) {
-                if let (Ok(act), Ok(max)) = (act_str.trim().parse::<f32>(), max_str.trim().parse::<f32>()) {
-                    if max > 0.0 {
-                        let min_path = format!("/sys/class/drm/card{}/gt_min_freq_mhz", card_idx);
-                        let min = fs::read_to_string(&min_path).ok().and_then(|s| s.trim().parse::<f32>().ok()).unwrap_or(0.0);
-                        let span = max - min;
-                        if span > 0.0 {
-                            return (((act - min) / span) * 100.0).clamp(0.0, 100.0);
-                        }
-                    }
+            if let (Ok(act_str), Ok(max_str)) =
+                (fs::read_to_string(&act_path), fs::read_to_string(&max_path))
+                && let (Ok(act), Ok(max)) =
+                    (act_str.trim().parse::<f32>(), max_str.trim().parse::<f32>())
+                && max > 0.0
+            {
+                let min_path = format!("/sys/class/drm/card{}/gt_min_freq_mhz", card_idx);
+                let min = fs::read_to_string(&min_path)
+                    .ok()
+                    .and_then(|s| s.trim().parse::<f32>().ok())
+                    .unwrap_or(0.0);
+                let span = max - min;
+                if span > 0.0 {
+                    return (((act - min) / span) * 100.0).clamp(0.0, 100.0);
                 }
             }
         }
@@ -544,35 +553,31 @@ impl TelemetryCollector {
             let path = format!("/sys/class/drm/card{}/device", card_idx);
             let total_path = format!("{}/mem_info_vram_total", path);
             let used_path = format!("{}/mem_info_vram_used", path);
-            if let Ok(total_bytes) = fs::read_to_string(&total_path).and_then(|s| {
-                s.trim()
-                    .parse::<u64>()
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-            }) {
-                if total_bytes > 0 {
-                    let used_bytes = fs::read_to_string(&used_path)
-                        .ok()
-                        .and_then(|s| s.trim().parse::<u64>().ok())
-                        .unwrap_or(0);
-                    return Some((used_bytes / (1024 * 1024), total_bytes / (1024 * 1024)));
-                }
+            if let Ok(total_bytes) = fs::read_to_string(&total_path)
+                .and_then(|s| s.trim().parse::<u64>().map_err(std::io::Error::other))
+                && total_bytes > 0
+            {
+                let used_bytes = fs::read_to_string(&used_path)
+                    .ok()
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+                    .unwrap_or(0);
+                return Some((used_bytes / (1024 * 1024), total_bytes / (1024 * 1024)));
             }
         }
 
         // 2. Check Intel lmem_total_bytes / used
         for card_idx in 0..8 {
             let pattern = format!("/sys/class/drm/card{}/lmem_total_bytes", card_idx);
-            if let Ok(total_str) = fs::read_to_string(&pattern) {
-                if let Ok(total_bytes) = total_str.trim().parse::<u64>() {
-                    if total_bytes > 0 {
-                        let used_path = format!("/sys/class/drm/card{}/lmem_used_bytes", card_idx);
-                        let used_bytes = fs::read_to_string(&used_path)
-                            .ok()
-                            .and_then(|s| s.trim().parse::<u64>().ok())
-                            .unwrap_or(0);
-                        return Some((used_bytes / (1024 * 1024), total_bytes / (1024 * 1024)));
-                    }
-                }
+            if let Ok(total_str) = fs::read_to_string(&pattern)
+                && let Ok(total_bytes) = total_str.trim().parse::<u64>()
+                && total_bytes > 0
+            {
+                let used_path = format!("/sys/class/drm/card{}/lmem_used_bytes", card_idx);
+                let used_bytes = fs::read_to_string(&used_path)
+                    .ok()
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+                    .unwrap_or(0);
+                return Some((used_bytes / (1024 * 1024), total_bytes / (1024 * 1024)));
             }
         }
 
@@ -582,18 +587,18 @@ impl TelemetryCollector {
                 let info_path = entry.path().join("information");
                 if let Ok(content) = fs::read_to_string(info_path) {
                     for line in content.lines() {
-                        if line.contains("Total Memory:") || line.contains("FB Memory:") {
-                            if let Some(val_str) = line.split(':').nth(1) {
-                                let num_str = val_str
-                                    .replace("MiB", "")
-                                    .replace("MB", "")
-                                    .replace("KiB", "")
-                                    .replace("KB", "");
-                                if let Ok(mb) = num_str.trim().parse::<u64>() {
-                                    if mb > 0 {
-                                        return Some((0, mb));
-                                    }
-                                }
+                        if (line.contains("Total Memory:") || line.contains("FB Memory:"))
+                            && let Some(val_str) = line.split(':').nth(1)
+                        {
+                            let num_str = val_str
+                                .replace("MiB", "")
+                                .replace("MB", "")
+                                .replace("KiB", "")
+                                .replace("KB", "");
+                            if let Ok(mb) = num_str.trim().parse::<u64>()
+                                && mb > 0
+                            {
+                                return Some((0, mb));
                             }
                         }
                     }
@@ -639,10 +644,10 @@ impl TelemetryCollector {
     pub fn read_cpu_name() -> String {
         if let Ok(contents) = fs::read_to_string("/proc/cpuinfo") {
             for line in contents.lines() {
-                if line.starts_with("model name") {
-                    if let Some((_, val)) = line.split_once(':') {
-                        return val.trim().to_string();
-                    }
+                if line.starts_with("model name")
+                    && let Some((_, val)) = line.split_once(':')
+                {
+                    return val.trim().to_string();
                 }
             }
         }

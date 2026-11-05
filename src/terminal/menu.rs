@@ -16,20 +16,71 @@ pub const SCENE_NAMES: [&str; 8] = [
 ];
 
 pub const RESOLUTION_PRESETS: [(&str, &str, u32, u32); 7] = [
-    ("16K Extreme", "15360 x 8640  (132.7 Mpix) [Extreme GPU Stress]", 15360, 8640),
-    ("8K Ultra",    " 7680 x 4320  (33.2 Mpix)  [Heavy Workload]", 7680, 4320),
-    ("4K UHD",      " 3840 x 2160  (8.29 Mpix)  [Default / Balanced]", 3840, 2160),
-    ("1440p QHD",   " 2560 x 1440  (3.69 Mpix)  [High Performance]", 2560, 1440),
-    ("1080p FHD",   " 1920 x 1080  (2.07 Mpix)  [Standard HD]", 1920, 1080),
-    ("720p HD",     " 1280 x 720   (0.92 Mpix)  [Fast / Low Power]", 1280, 720),
-    ("Native Grid", "Viewport      (Matches terminal character grid 1:1)", 0, 0),
+    (
+        "16K Extreme",
+        "15360 x 8640  (132.7 Mpix) [Extreme GPU Stress]",
+        15360,
+        8640,
+    ),
+    (
+        "8K Ultra",
+        " 7680 x 4320  (33.2 Mpix)  [Heavy Workload]",
+        7680,
+        4320,
+    ),
+    (
+        "4K UHD",
+        " 3840 x 2160  (8.29 Mpix)  [Default / Balanced]",
+        3840,
+        2160,
+    ),
+    (
+        "1440p QHD",
+        " 2560 x 1440  (3.69 Mpix)  [High Performance]",
+        2560,
+        1440,
+    ),
+    (
+        "1080p FHD",
+        " 1920 x 1080  (2.07 Mpix)  [Standard HD]",
+        1920,
+        1080,
+    ),
+    (
+        "720p HD",
+        " 1280 x 720   (0.92 Mpix)  [Fast / Low Power]",
+        1280,
+        720,
+    ),
+    (
+        "Native Grid",
+        "Viewport      (Matches terminal character grid 1:1)",
+        0,
+        0,
+    ),
 ];
 
 pub const FRAME_PRESETS: [(&str, &str, u32); 4] = [
-    ("Quick Check",    "  30 frames / act   (240 frames total,  ~3.5 sec)", 30),
-    ("Standard Bench", " 100 frames / act   (800 frames total,  ~12 sec)", 100),
-    ("Stress Test",    " 300 frames / act   (2400 frames total, ~35 sec)", 300),
-    ("Endurance Soak", "1000 frames / act   (8000 frames total, ~120 sec)", 1000),
+    (
+        "Quick Check",
+        "  30 frames / act   (240 frames total,  ~3.5 sec)",
+        30,
+    ),
+    (
+        "Standard Bench",
+        " 100 frames / act   (800 frames total,  ~12 sec)",
+        100,
+    ),
+    (
+        "Stress Test",
+        " 300 frames / act   (2400 frames total, ~35 sec)",
+        300,
+    ),
+    (
+        "Endurance Soak",
+        "1000 frames / act   (8000 frames total, ~120 sec)",
+        1000,
+    ),
 ];
 
 #[derive(Debug, Clone)]
@@ -76,6 +127,12 @@ pub struct CliMenu {
     buf: String,
 }
 
+impl Default for CliMenu {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CliMenu {
     pub fn new() -> Self {
         Self {
@@ -110,63 +167,82 @@ impl CliMenu {
             };
 
             if last_draw.elapsed() >= refresh_dur {
-                self.render_current_view(config, telemetry, adapter_info, all_adapters, term_cols, term_rows)?;
+                self.render_current_view(
+                    config,
+                    telemetry,
+                    adapter_info,
+                    all_adapters,
+                    term_cols,
+                    term_rows,
+                )?;
                 last_draw = Instant::now();
             }
 
-            if event::poll(Duration::from_millis(50))? {
-                if let Event::Key(key) = event::read()? {
-                    if key.kind != KeyEventKind::Press {
-                        continue;
-                    }
-
-                    // Global quit on Ctrl+C
-                    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
-                        break MenuAction::Exit;
-                    }
-
-                    match self.view {
-                        MenuView::Main => {
-                            if let Some(act) = self.handle_main_input(key.code, config, all_adapters.len())? {
-                                break act;
-                            }
-                        }
-                        MenuView::SelectResolution => {
-                            if let Some(act) = self.handle_resolution_input(key.code, config, term_cols as u32, term_rows as u32)? {
-                                break act;
-                            }
-                        }
-                        MenuView::SelectScene => {
-                            self.handle_scene_input(key.code, config);
-                        }
-                        MenuView::SelectFrames => {
-                            if let Some(act) = self.handle_frames_input(key.code, config)? {
-                                break act;
-                            }
-                        }
-                        MenuView::SelectGpu => {
-                            if let Some(act) = self.handle_gpu_input(key.code, all_adapters.len()) {
-                                break act;
-                            }
-                        }
-                        MenuView::TelemetryInfo => {
-                            match key.code {
-                                KeyCode::Enter
-                                | KeyCode::Esc
-                                | KeyCode::Backspace
-                                | KeyCode::Char('q')
-                                | KeyCode::Char('Q')
-                                | KeyCode::Char(' ') => {
-                                    self.view = MenuView::Main;
-                                    self.selected_idx = 9;
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    self.render_current_view(config, telemetry, adapter_info, all_adapters, term_cols, term_rows)?;
-                    last_draw = Instant::now();
+            if event::poll(Duration::from_millis(50))?
+                && let Event::Key(key) = event::read()?
+            {
+                if key.kind != KeyEventKind::Press {
+                    continue;
                 }
+
+                // Global quit on Ctrl+C
+                if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+                    break MenuAction::Exit;
+                }
+
+                match self.view {
+                    MenuView::Main => {
+                        if let Some(act) =
+                            self.handle_main_input(key.code, config, all_adapters.len())?
+                        {
+                            break act;
+                        }
+                    }
+                    MenuView::SelectResolution => {
+                        if let Some(act) = self.handle_resolution_input(
+                            key.code,
+                            config,
+                            term_cols as u32,
+                            term_rows as u32,
+                        )? {
+                            break act;
+                        }
+                    }
+                    MenuView::SelectScene => {
+                        self.handle_scene_input(key.code, config);
+                    }
+                    MenuView::SelectFrames => {
+                        if let Some(act) = self.handle_frames_input(key.code, config)? {
+                            break act;
+                        }
+                    }
+                    MenuView::SelectGpu => {
+                        if let Some(act) = self.handle_gpu_input(key.code, all_adapters.len()) {
+                            break act;
+                        }
+                    }
+                    MenuView::TelemetryInfo => match key.code {
+                        KeyCode::Enter
+                        | KeyCode::Esc
+                        | KeyCode::Backspace
+                        | KeyCode::Char('q')
+                        | KeyCode::Char('Q')
+                        | KeyCode::Char(' ') => {
+                            self.view = MenuView::Main;
+                            self.selected_idx = 9;
+                        }
+                        _ => {}
+                    },
+                }
+                self.render_current_view(
+                    config,
+                    telemetry,
+                    adapter_info,
+                    all_adapters,
+                    term_cols,
+                    term_rows,
+                )?;
+                last_draw = Instant::now();
             }
         };
 
@@ -288,7 +364,11 @@ impl CliMenu {
             KeyCode::Char('6') => return Ok(self.apply_res_preset(5, config)),
             KeyCode::Char('7') => return Ok(self.apply_native_res(config, term_cols, term_rows)),
             KeyCode::Char('8') => return self.prompt_custom_res(config),
-            KeyCode::Char('0') | KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc | KeyCode::Backspace => {
+            KeyCode::Char('0')
+            | KeyCode::Char('q')
+            | KeyCode::Char('Q')
+            | KeyCode::Esc
+            | KeyCode::Backspace => {
                 self.view = MenuView::Main;
                 self.selected_idx = 5;
             }
@@ -319,7 +399,12 @@ impl CliMenu {
         Some(MenuAction::RecreatePipeline)
     }
 
-    fn apply_native_res(&mut self, config: &mut MenuConfig, cols: u32, rows: u32) -> Option<MenuAction> {
+    fn apply_native_res(
+        &mut self,
+        config: &mut MenuConfig,
+        cols: u32,
+        rows: u32,
+    ) -> Option<MenuAction> {
         let term_w = cols.max(40);
         let char_h = rows.saturating_sub(7).max(8);
         config.compute_width = term_w;
@@ -337,12 +422,16 @@ impl CliMenu {
         stdout.flush()?;
 
         println!("\r\n\x1b[38;2;0;220;255;1m─── CUSTOM COMPUTE RESOLUTION ───\x1b[0m");
-        print!("\x1b[38;2;255;255;255;1mEnter compute width in pixels (e.g. 2560): \x1b[38;2;0;255;200m");
+        print!(
+            "\x1b[38;2;255;255;255;1mEnter compute width in pixels (e.g. 2560): \x1b[38;2;0;255;200m"
+        );
         stdout.flush()?;
         let mut w_str = String::new();
         let _ = io::stdin().read_line(&mut w_str);
 
-        print!("\x1b[38;2;255;255;255;1mEnter compute height in pixels (e.g. 1440): \x1b[38;2;0;255;200m");
+        print!(
+            "\x1b[38;2;255;255;255;1mEnter compute height in pixels (e.g. 1440): \x1b[38;2;0;255;200m"
+        );
         stdout.flush()?;
         let mut h_str = String::new();
         let _ = io::stdin().read_line(&mut h_str);
@@ -350,13 +439,14 @@ impl CliMenu {
         stdout.flush()?;
 
         let mut changed = false;
-        if let (Ok(w), Ok(h)) = (w_str.trim().parse::<u32>(), h_str.trim().parse::<u32>()) {
-            if (64..=16384).contains(&w) && (64..=16384).contains(&h) {
-                config.compute_width = w;
-                config.compute_height = h;
-                config.resolution_name = format_resolution_tag(w, h);
-                changed = true;
-            }
+        if let (Ok(w), Ok(h)) = (w_str.trim().parse::<u32>(), h_str.trim().parse::<u32>())
+            && (64..=16384).contains(&w)
+            && (64..=16384).contains(&h)
+        {
+            config.compute_width = w;
+            config.compute_height = h;
+            config.resolution_name = format_resolution_tag(w, h);
+            changed = true;
         }
 
         write!(stdout, "\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H")?;
@@ -384,7 +474,11 @@ impl CliMenu {
             }
             KeyCode::Home => self.selected_idx = 0,
             KeyCode::End => self.selected_idx = total_scene_items - 1,
-            KeyCode::Char('0') | KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc | KeyCode::Backspace => {
+            KeyCode::Char('0')
+            | KeyCode::Char('q')
+            | KeyCode::Char('Q')
+            | KeyCode::Esc
+            | KeyCode::Backspace => {
                 self.view = MenuView::Main;
                 self.selected_idx = 4;
             }
@@ -396,20 +490,24 @@ impl CliMenu {
                 self.selected_idx = 4;
             }
             _ => {
-                if let KeyCode::Char(c) = code {
-                    if let Some(digit) = c.to_digit(10) {
-                        if digit >= 1 && (digit as usize) <= SCENE_NAMES.len() {
-                            config.selected_scene = (digit - 1) as u32;
-                            self.view = MenuView::Main;
-                            self.selected_idx = 4;
-                        }
-                    }
+                if let KeyCode::Char(c) = code
+                    && let Some(digit) = c.to_digit(10)
+                    && digit >= 1
+                    && (digit as usize) <= SCENE_NAMES.len()
+                {
+                    config.selected_scene = digit - 1;
+                    self.view = MenuView::Main;
+                    self.selected_idx = 4;
                 }
             }
         }
     }
 
-    fn handle_frames_input(&mut self, code: KeyCode, config: &mut MenuConfig) -> io::Result<Option<MenuAction>> {
+    fn handle_frames_input(
+        &mut self,
+        code: KeyCode,
+        config: &mut MenuConfig,
+    ) -> io::Result<Option<MenuAction>> {
         const TOTAL_FRAME_ITEMS: usize = 6; // 4 presets + custom + back
         match code {
             KeyCode::Up | KeyCode::Char('k') => {
@@ -441,7 +539,11 @@ impl CliMenu {
                 self.selected_idx = 6;
             }
             KeyCode::Char('5') => return self.prompt_custom_frames(config),
-            KeyCode::Char('0') | KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc | KeyCode::Backspace => {
+            KeyCode::Char('0')
+            | KeyCode::Char('q')
+            | KeyCode::Char('Q')
+            | KeyCode::Esc
+            | KeyCode::Backspace => {
                 self.view = MenuView::Main;
                 self.selected_idx = 6;
             }
@@ -476,10 +578,10 @@ impl CliMenu {
         print!("\x1b[0m");
         stdout.flush()?;
 
-        if let Ok(frames) = f_str.trim().parse::<u32>() {
-            if (1..=50_000).contains(&frames) {
-                config.frames_per_scene = frames;
-            }
+        if let Ok(frames) = f_str.trim().parse::<u32>()
+            && (1..=50_000).contains(&frames)
+        {
+            config.frames_per_scene = frames;
         }
 
         write!(stdout, "\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H")?;
@@ -502,7 +604,11 @@ impl CliMenu {
             }
             KeyCode::Home => self.selected_idx = 0,
             KeyCode::End => self.selected_idx = total_items - 1,
-            KeyCode::Char('0') | KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc | KeyCode::Backspace => {
+            KeyCode::Char('0')
+            | KeyCode::Char('q')
+            | KeyCode::Char('Q')
+            | KeyCode::Esc
+            | KeyCode::Backspace => {
                 self.view = MenuView::Main;
                 self.selected_idx = 8;
             }
@@ -518,14 +624,14 @@ impl CliMenu {
                 }
             }
             _ => {
-                if let KeyCode::Char(c) = code {
-                    if let Some(digit) = c.to_digit(10) {
-                        let idx = digit as usize;
-                        if idx < adapter_count {
-                            self.view = MenuView::Main;
-                            self.selected_idx = 8;
-                            return Some(MenuAction::SwitchGpu(idx));
-                        }
+                if let KeyCode::Char(c) = code
+                    && let Some(digit) = c.to_digit(10)
+                {
+                    let idx = digit as usize;
+                    if idx < adapter_count {
+                        self.view = MenuView::Main;
+                        self.selected_idx = 8;
+                        return Some(MenuAction::SwitchGpu(idx));
                     }
                 }
             }
@@ -604,7 +710,8 @@ impl CliMenu {
         self.buf.push_str("\r\n");
 
         self.buf.push_str(pad);
-        self.buf.push_str(&format_section_header("SYSTEM HARDWARE & SENSOR TELEMETRY"));
+        self.buf
+            .push_str(&format_section_header("SYSTEM HARDWARE & SENSOR TELEMETRY"));
         self.buf.push_str("\r\n");
 
         // Live GPU Card line
@@ -648,49 +755,89 @@ impl CliMenu {
 
         // Section 1: Execution Modes
         self.buf.push_str(pad);
-        self.buf.push_str(&format_section_header("BENCHMARK & EXECUTION MODES"));
+        self.buf
+            .push_str(&format_section_header("BENCHMARK & EXECUTION MODES"));
         self.buf.push_str("\r\n");
 
-        let row0 = format_menu_row(self.selected_idx == 0, "1", "Launch Interactive Demo", "[ 60 FPS V-Sync Preview ]");
+        let row0 = format_menu_row(
+            self.selected_idx == 0,
+            "1",
+            "Launch Interactive Demo",
+            "[ 60 FPS V-Sync Preview ]",
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row0);
         self.buf.push_str("\r\n");
 
-        let row1 = format_menu_row(self.selected_idx == 1, "2", "Launch GPU Stress Test", "[ 100% Uncapped Max Load ]");
+        let row1 = format_menu_row(
+            self.selected_idx == 1,
+            "2",
+            "Launch GPU Stress Test",
+            "[ 100% Uncapped Max Load ]",
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row1);
         self.buf.push_str("\r\n");
 
-        let row2 = format_menu_row(self.selected_idx == 2, "3", "Run Full Benchmark Suite", "[ 8 Acts · Scorecard ]");
+        let row2 = format_menu_row(
+            self.selected_idx == 2,
+            "3",
+            "Run Full Benchmark Suite",
+            "[ 8 Acts · Scorecard ]",
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row2);
         self.buf.push_str("\r\n");
 
-        let row3 = format_menu_row(self.selected_idx == 3, "4", "Run Consistency Suite", "[ 5x Soak + Cooldown ]");
+        let row3 = format_menu_row(
+            self.selected_idx == 3,
+            "4",
+            "Run Consistency Suite",
+            "[ 5x Soak + Cooldown ]",
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row3);
         self.buf.push_str("\r\n");
 
         // Section 2: Workload Configuration
         self.buf.push_str(pad);
-        self.buf.push_str(&format_section_header("WORKLOAD CONFIGURATION"));
+        self.buf
+            .push_str(&format_section_header("WORKLOAD CONFIGURATION"));
         self.buf.push_str("\r\n");
 
         let scene_badge = format_scene_badge(config.selected_scene);
-        let row4 = format_menu_row(self.selected_idx == 4, "5", "Select Starting Scene", &scene_badge);
+        let row4 = format_menu_row(
+            self.selected_idx == 4,
+            "5",
+            "Select Starting Scene",
+            &scene_badge,
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row4);
         self.buf.push_str("\r\n");
 
         let res_badge = format_resolution_badge(config.compute_width, config.compute_height);
-        let row5 = format_menu_row(self.selected_idx == 5, "6", "Compute Resolution", &res_badge);
+        let row5 = format_menu_row(
+            self.selected_idx == 5,
+            "6",
+            "Compute Resolution",
+            &res_badge,
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row5);
         self.buf.push_str("\r\n");
 
         let total_bench_frames = config.frames_per_scene * (SCENE_NAMES.len() as u32);
-        let frames_badge = format!("[ {} f/act ({} tot) ]", config.frames_per_scene, total_bench_frames);
-        let row6 = format_menu_row(self.selected_idx == 6, "7", "Benchmark Frame Duration", &frames_badge);
+        let frames_badge = format!(
+            "[ {} f/act ({} tot) ]",
+            config.frames_per_scene, total_bench_frames
+        );
+        let row6 = format_menu_row(
+            self.selected_idx == 6,
+            "7",
+            "Benchmark Frame Duration",
+            &frames_badge,
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row6);
         self.buf.push_str("\r\n");
@@ -700,33 +847,61 @@ impl CliMenu {
         } else {
             "[ 60 FPS V-SYNC ]"
         };
-        let row7 = format_menu_row(self.selected_idx == 7, "8", "Framerate & V-Sync Mode", stress_badge);
+        let row7 = format_menu_row(
+            self.selected_idx == 7,
+            "8",
+            "Framerate & V-Sync Mode",
+            stress_badge,
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row7);
         self.buf.push_str("\r\n");
 
         // Section 3: Hardware & System
         self.buf.push_str(pad);
-        self.buf.push_str(&format_section_header("SYSTEM & HARDWARE"));
+        self.buf
+            .push_str(&format_section_header("SYSTEM & HARDWARE"));
         self.buf.push_str("\r\n");
 
-        let gpu_badge = format!("[ #{}: {} ]", config.selected_gpu_index, trim_to(&adapter_info.name, 18));
-        let row8 = format_menu_row(self.selected_idx == 8, "9", "Switch GPU Adapter", &gpu_badge);
+        let gpu_badge = format!(
+            "[ #{}: {} ]",
+            config.selected_gpu_index,
+            trim_to(&adapter_info.name, 18)
+        );
+        let row8 = format_menu_row(
+            self.selected_idx == 8,
+            "9",
+            "Switch GPU Adapter",
+            &gpu_badge,
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row8);
         self.buf.push_str("\r\n");
 
         let telem_badge = if stats.gpu_temp_c > 0.0 {
-            format!("[ {:.0}°C · {:.0}W · {} RPM ]", stats.gpu_temp_c, stats.gpu_power_w, stats.gpu_fan_rpm)
+            format!(
+                "[ {:.0}°C · {:.0}W · {} RPM ]",
+                stats.gpu_temp_c, stats.gpu_power_w, stats.gpu_fan_rpm
+            )
         } else {
             "[ Sensor Diagnostics ]".to_string()
         };
-        let row9 = format_menu_row(self.selected_idx == 9, "T", "Live Hardware Telemetry", &telem_badge);
+        let row9 = format_menu_row(
+            self.selected_idx == 9,
+            "T",
+            "Live Hardware Telemetry",
+            &telem_badge,
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row9);
         self.buf.push_str("\r\n");
 
-        let row10 = format_menu_row(self.selected_idx == 10, "0", "Exit DynoTerm Launcher", "[ Return to Shell ]");
+        let row10 = format_menu_row(
+            self.selected_idx == 10,
+            "0",
+            "Exit DynoTerm Launcher",
+            "[ Return to Shell ]",
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row10);
         self.buf.push_str("\r\n");
@@ -761,19 +936,56 @@ impl CliMenu {
         self.buf.push_str("\r\n");
 
         self.buf.push_str(pad);
-        self.buf.push_str(&format_section_header("RESOLUTION PRESETS"));
+        self.buf
+            .push_str(&format_section_header("RESOLUTION PRESETS"));
         self.buf.push_str("\r\n");
 
         let cur_w = config.compute_width;
         let cur_h = config.compute_height;
 
         let res_items = [
-            ("1", RESOLUTION_PRESETS[0].0, "[ 15360x8640 · 132.7 Mpix · Extreme Load ]", RESOLUTION_PRESETS[0].2, RESOLUTION_PRESETS[0].3),
-            ("2", RESOLUTION_PRESETS[1].0, "[ 7680x4320 · 33.2 Mpix · Heavy Workload ]", RESOLUTION_PRESETS[1].2, RESOLUTION_PRESETS[1].3),
-            ("3", RESOLUTION_PRESETS[2].0, "[ 3840x2160 · 8.29 Mpix · Balanced Default ]", RESOLUTION_PRESETS[2].2, RESOLUTION_PRESETS[2].3),
-            ("4", RESOLUTION_PRESETS[3].0, "[ 2560x1440 · 3.69 Mpix · High Performance ]", RESOLUTION_PRESETS[3].2, RESOLUTION_PRESETS[3].3),
-            ("5", RESOLUTION_PRESETS[4].0, "[ 1920x1080 · 2.07 Mpix · Standard HD ]", RESOLUTION_PRESETS[4].2, RESOLUTION_PRESETS[4].3),
-            ("6", RESOLUTION_PRESETS[5].0, "[ 1280x720 · 0.92 Mpix · Fast Preview ]", RESOLUTION_PRESETS[5].2, RESOLUTION_PRESETS[5].3),
+            (
+                "1",
+                RESOLUTION_PRESETS[0].0,
+                "[ 15360x8640 · 132.7 Mpix · Extreme Load ]",
+                RESOLUTION_PRESETS[0].2,
+                RESOLUTION_PRESETS[0].3,
+            ),
+            (
+                "2",
+                RESOLUTION_PRESETS[1].0,
+                "[ 7680x4320 · 33.2 Mpix · Heavy Workload ]",
+                RESOLUTION_PRESETS[1].2,
+                RESOLUTION_PRESETS[1].3,
+            ),
+            (
+                "3",
+                RESOLUTION_PRESETS[2].0,
+                "[ 3840x2160 · 8.29 Mpix · Balanced Default ]",
+                RESOLUTION_PRESETS[2].2,
+                RESOLUTION_PRESETS[2].3,
+            ),
+            (
+                "4",
+                RESOLUTION_PRESETS[3].0,
+                "[ 2560x1440 · 3.69 Mpix · High Performance ]",
+                RESOLUTION_PRESETS[3].2,
+                RESOLUTION_PRESETS[3].3,
+            ),
+            (
+                "5",
+                RESOLUTION_PRESETS[4].0,
+                "[ 1920x1080 · 2.07 Mpix · Standard HD ]",
+                RESOLUTION_PRESETS[4].2,
+                RESOLUTION_PRESETS[4].3,
+            ),
+            (
+                "6",
+                RESOLUTION_PRESETS[5].0,
+                "[ 1280x720 · 0.92 Mpix · Fast Preview ]",
+                RESOLUTION_PRESETS[5].2,
+                RESOLUTION_PRESETS[5].3,
+            ),
         ];
 
         for (idx, (num, name, badge, w, h)) in res_items.iter().enumerate() {
@@ -786,30 +998,50 @@ impl CliMenu {
         }
 
         self.buf.push_str(pad);
-        self.buf.push_str(&format_section_header("SPECIAL MODES & RETURN"));
+        self.buf
+            .push_str(&format_section_header("SPECIAL MODES & RETURN"));
         self.buf.push_str("\r\n");
 
         // Native grid (idx 6)
         let is_native_active = cur_w < 300 && cur_w > 0;
-        let row_native = format_choice_row(self.selected_idx == 6, "7", is_native_active, "Native Grid", "[ Viewport · 1:1 Character Grid ]");
+        let row_native = format_choice_row(
+            self.selected_idx == 6,
+            "7",
+            is_native_active,
+            "Native Grid",
+            "[ Viewport · 1:1 Character Grid ]",
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row_native);
         self.buf.push_str("\r\n");
 
         // Custom (idx 7)
-        let is_custom_active = !res_items.iter().any(|p| p.3 == cur_w && p.4 == cur_h) && !is_native_active;
+        let is_custom_active =
+            !res_items.iter().any(|p| p.3 == cur_w && p.4 == cur_h) && !is_native_active;
         let custom_badge = if is_custom_active {
             format!("[ Active: {}x{} ]", cur_w, cur_h)
         } else {
             "[ Prompt Width x Height ]".to_string()
         };
-        let row_custom = format_choice_row(self.selected_idx == 7, "8", is_custom_active, "Custom Pixels", &custom_badge);
+        let row_custom = format_choice_row(
+            self.selected_idx == 7,
+            "8",
+            is_custom_active,
+            "Custom Pixels",
+            &custom_badge,
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row_custom);
         self.buf.push_str("\r\n");
 
         // Back item (idx 8)
-        let row_back = format_choice_row(self.selected_idx == 8, "0", false, "Return to Main Menu", "[ Keep Current Selection ]");
+        let row_back = format_choice_row(
+            self.selected_idx == 8,
+            "0",
+            false,
+            "Return to Main Menu",
+            "[ Keep Current Selection ]",
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row_back);
         self.buf.push_str("\r\n");
@@ -844,18 +1076,28 @@ impl CliMenu {
         self.buf.push_str("\r\n");
 
         self.buf.push_str(pad);
-        self.buf.push_str(&format_section_header("AVAILABLE COMPUTATIONAL ACTS"));
+        self.buf
+            .push_str(&format_section_header("AVAILABLE COMPUTATIONAL ACTS"));
         self.buf.push_str("\r\n");
 
         let scene_details = [
-            ("Act I: Ocean Waves",         "[ Fluid Dynamics / Gravity Waves ]"),
-            ("Act II: Mandelbulb Core",    "[ 3D Fractal Geometry Raymarch ]"),
-            ("Act III: Black Hole Core",   "[ General Relativity Geodesics ]"),
-            ("Act IV: Mesocyclone",        "[ Atmospheric Navier-Stokes ]"),
-            ("Act V: Electrophysiology",   "[ Cardiac FitzHugh-Nagumo ]"),
-            ("Act VI: Boltzmann Flow",     "[ CFD D2Q9 Vortex Shedding ]"),
-            ("Act VII: Gait Kinematics",   "[ Forward Kinematics 3D Rig ]"),
-            ("Act VIII: N-Body Supernova", "[ Gravitational Astrophysics ]"),
+            ("Act I: Ocean Waves", "[ Fluid Dynamics / Gravity Waves ]"),
+            (
+                "Act II: Mandelbulb Core",
+                "[ 3D Fractal Geometry Raymarch ]",
+            ),
+            (
+                "Act III: Black Hole Core",
+                "[ General Relativity Geodesics ]",
+            ),
+            ("Act IV: Mesocyclone", "[ Atmospheric Navier-Stokes ]"),
+            ("Act V: Electrophysiology", "[ Cardiac FitzHugh-Nagumo ]"),
+            ("Act VI: Boltzmann Flow", "[ CFD D2Q9 Vortex Shedding ]"),
+            ("Act VII: Gait Kinematics", "[ Forward Kinematics 3D Rig ]"),
+            (
+                "Act VIII: N-Body Supernova",
+                "[ Gravitational Astrophysics ]",
+            ),
         ];
 
         for (idx, (name, badge)) in scene_details.iter().enumerate() {
@@ -874,7 +1116,13 @@ impl CliMenu {
 
         // Back item (idx 8)
         let is_back_sel = self.selected_idx == SCENE_NAMES.len();
-        let row_back = format_choice_row(is_back_sel, "0", false, "Return to Main Menu", "[ Keep Current Selection ]");
+        let row_back = format_choice_row(
+            is_back_sel,
+            "0",
+            false,
+            "Return to Main Menu",
+            "[ Keep Current Selection ]",
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row_back);
         self.buf.push_str("\r\n");
@@ -909,16 +1157,37 @@ impl CliMenu {
         self.buf.push_str("\r\n");
 
         self.buf.push_str(pad);
-        self.buf.push_str(&format_section_header("BENCHMARK DURATION PRESETS"));
+        self.buf
+            .push_str(&format_section_header("BENCHMARK DURATION PRESETS"));
         self.buf.push_str("\r\n");
 
         let cur_frames = config.frames_per_scene;
 
         let frame_items = [
-            ("1", FRAME_PRESETS[0].0, "[ 30 f/act · 240 tot (~3.5s) ]", FRAME_PRESETS[0].2),
-            ("2", FRAME_PRESETS[1].0, "[ 100 f/act · 800 tot (~12s) ]", FRAME_PRESETS[1].2),
-            ("3", FRAME_PRESETS[2].0, "[ 300 f/act · 2400 tot (~35s) ]", FRAME_PRESETS[2].2),
-            ("4", FRAME_PRESETS[3].0, "[ 1000 f/act · 8000 tot (~120s) ]", FRAME_PRESETS[3].2),
+            (
+                "1",
+                FRAME_PRESETS[0].0,
+                "[ 30 f/act · 240 tot (~3.5s) ]",
+                FRAME_PRESETS[0].2,
+            ),
+            (
+                "2",
+                FRAME_PRESETS[1].0,
+                "[ 100 f/act · 800 tot (~12s) ]",
+                FRAME_PRESETS[1].2,
+            ),
+            (
+                "3",
+                FRAME_PRESETS[2].0,
+                "[ 300 f/act · 2400 tot (~35s) ]",
+                FRAME_PRESETS[2].2,
+            ),
+            (
+                "4",
+                FRAME_PRESETS[3].0,
+                "[ 1000 f/act · 8000 tot (~120s) ]",
+                FRAME_PRESETS[3].2,
+            ),
         ];
 
         for (idx, (num, name, badge, f)) in frame_items.iter().enumerate() {
@@ -942,14 +1211,26 @@ impl CliMenu {
         } else {
             "[ Enter Arbitrary Count ]".to_string()
         };
-        let row_custom = format_choice_row(is_custom_sel, "5", is_custom_active, "Custom Frames", &custom_badge);
+        let row_custom = format_choice_row(
+            is_custom_sel,
+            "5",
+            is_custom_active,
+            "Custom Frames",
+            &custom_badge,
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row_custom);
         self.buf.push_str("\r\n");
 
         // Back item (idx 5)
         let is_back_sel = self.selected_idx == 5;
-        let row_back = format_choice_row(is_back_sel, "0", false, "Return to Main Menu", "[ Keep Current Selection ]");
+        let row_back = format_choice_row(
+            is_back_sel,
+            "0",
+            false,
+            "Return to Main Menu",
+            "[ Keep Current Selection ]",
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row_back);
         self.buf.push_str("\r\n");
@@ -984,7 +1265,8 @@ impl CliMenu {
         self.buf.push_str("\r\n");
 
         self.buf.push_str(pad);
-        self.buf.push_str(&format_section_header("DETECTED GRAPHICS HARDWARE"));
+        self.buf
+            .push_str(&format_section_header("DETECTED GRAPHICS HARDWARE"));
         self.buf.push_str("\r\n");
 
         for (idx, adapter) in adapters.iter().enumerate() {
@@ -1007,7 +1289,13 @@ impl CliMenu {
         // Back option
         let back_idx = adapters.len();
         let is_back_sel = self.selected_idx == back_idx;
-        let row_back = format_choice_row(is_back_sel, "0", false, "Return to Main Menu", "[ Keep Current Selection ]");
+        let row_back = format_choice_row(
+            is_back_sel,
+            "0",
+            false,
+            "Return to Main Menu",
+            "[ Keep Current Selection ]",
+        );
         self.buf.push_str(pad);
         self.buf.push_str(&row_back);
         self.buf.push_str("\r\n");
@@ -1050,28 +1338,50 @@ impl CliMenu {
         self.buf.push_str("\r\n");
 
         self.buf.push_str(pad);
-        self.buf.push_str(&format_section_header("GPU ADAPTER & SENSORS"));
+        self.buf
+            .push_str(&format_section_header("GPU ADAPTER & SENSORS"));
         self.buf.push_str("\r\n");
 
-        let gpu_name_val = format!("\x1b[38;2;255;255;255;1m{}\x1b[0m", trim_to(&adapter_info.name, 44));
+        let gpu_name_val = format!(
+            "\x1b[38;2;255;255;255;1m{}\x1b[0m",
+            trim_to(&adapter_info.name, 44)
+        );
         self.buf.push_str(pad);
-        self.buf.push_str(&format_telemetry_metric("GPU Device", &gpu_name_val));
+        self.buf
+            .push_str(&format_telemetry_metric("GPU Device", &gpu_name_val));
         self.buf.push_str("\r\n");
 
-        let driver_val = format!("\x1b[38;2;0;255;200m{} ({:?})\x1b[0m", trim_to(&adapter_info.driver, 28), adapter_info.backend);
+        let driver_val = format!(
+            "\x1b[38;2;0;255;200m{} ({:?})\x1b[0m",
+            trim_to(&adapter_info.driver, 28),
+            adapter_info.backend
+        );
         self.buf.push_str(pad);
-        self.buf.push_str(&format_telemetry_metric("Driver & Backend", &driver_val));
+        self.buf
+            .push_str(&format_telemetry_metric("Driver & Backend", &driver_val));
         self.buf.push_str("\r\n");
 
-        let bus_str = if stats.pcie_link.is_empty() { "PCIe" } else { &stats.pcie_link };
-        let arch_val = format!("\x1b[38;2;255;180;0m{:?}\x1b[0m \x1b[38;2;140;150;170m(Bus: \x1b[38;2;255;255;255m{}\x1b[38;2;140;150;170m)\x1b[0m", adapter_info.device_type, bus_str);
+        let bus_str = if stats.pcie_link.is_empty() {
+            "PCIe"
+        } else {
+            &stats.pcie_link
+        };
+        let arch_val = format!(
+            "\x1b[38;2;255;180;0m{:?}\x1b[0m \x1b[38;2;140;150;170m(Bus: \x1b[38;2;255;255;255m{}\x1b[38;2;140;150;170m)\x1b[0m",
+            adapter_info.device_type, bus_str
+        );
         self.buf.push_str(pad);
-        self.buf.push_str(&format_telemetry_metric("Architecture", &arch_val));
+        self.buf
+            .push_str(&format_telemetry_metric("Architecture", &arch_val));
         self.buf.push_str("\r\n");
 
-        let clocks_val = format!("\x1b[38;2;0;220;255;1m{} MHz\x1b[0m \x1b[38;2;140;150;170m(Peak: \x1b[38;2;255;255;255m{} MHz\x1b[38;2;140;150;170m, Load: \x1b[38;2;0;255;200;1m{:.1}%\x1b[38;2;140;150;170m)\x1b[0m", stats.gpu_clock_mhz, stats.peak_gpu_clock_mhz, stats.gpu_util_pct);
+        let clocks_val = format!(
+            "\x1b[38;2;0;220;255;1m{} MHz\x1b[0m \x1b[38;2;140;150;170m(Peak: \x1b[38;2;255;255;255m{} MHz\x1b[38;2;140;150;170m, Load: \x1b[38;2;0;255;200;1m{:.1}%\x1b[38;2;140;150;170m)\x1b[0m",
+            stats.gpu_clock_mhz, stats.peak_gpu_clock_mhz, stats.gpu_util_pct
+        );
         self.buf.push_str(pad);
-        self.buf.push_str(&format_telemetry_metric("GPU Clocks & Load", &clocks_val));
+        self.buf
+            .push_str(&format_telemetry_metric("GPU Clocks & Load", &clocks_val));
         self.buf.push_str("\r\n");
 
         let hotspot_val = if stats.gpu_hotspot_c > 0.0 {
@@ -1079,9 +1389,13 @@ impl CliMenu {
         } else {
             "N/A".to_string()
         };
-        let temps_val = format!("\x1b[38;2;0;255;200;1m{:.1} °C\x1b[0m \x1b[38;2;140;150;170m(Hotspot: \x1b[38;2;255;180;0;1m{}\x1b[38;2;140;150;170m)\x1b[0m", stats.gpu_temp_c, hotspot_val);
+        let temps_val = format!(
+            "\x1b[38;2;0;255;200;1m{:.1} °C\x1b[0m \x1b[38;2;140;150;170m(Hotspot: \x1b[38;2;255;180;0;1m{}\x1b[38;2;140;150;170m)\x1b[0m",
+            stats.gpu_temp_c, hotspot_val
+        );
         self.buf.push_str(pad);
-        self.buf.push_str(&format_telemetry_metric("GPU Temperatures", &temps_val));
+        self.buf
+            .push_str(&format_telemetry_metric("GPU Temperatures", &temps_val));
         self.buf.push_str("\r\n");
 
         let pwr_cap_str = if stats.gpu_power_cap_w > 0.0 {
@@ -1094,47 +1408,77 @@ impl CliMenu {
         } else {
             "0 RPM (Zero-RPM Idle)".to_string()
         };
-        let cooling_val = format!("\x1b[38;2;255;255;255m{}\x1b[0m \x1b[38;2;140;150;170m•\x1b[0m \x1b[38;2;255;180;0;1m{:.1} W\x1b[0m \x1b[38;2;140;150;170m(Cap: {})\x1b[0m", fan_str, stats.gpu_power_w, pwr_cap_str);
+        let cooling_val = format!(
+            "\x1b[38;2;255;255;255m{}\x1b[0m \x1b[38;2;140;150;170m•\x1b[0m \x1b[38;2;255;180;0;1m{:.1} W\x1b[0m \x1b[38;2;140;150;170m(Cap: {})\x1b[0m",
+            fan_str, stats.gpu_power_w, pwr_cap_str
+        );
         self.buf.push_str(pad);
-        self.buf.push_str(&format_telemetry_metric("Cooling & Power", &cooling_val));
+        self.buf
+            .push_str(&format_telemetry_metric("Cooling & Power", &cooling_val));
         self.buf.push_str("\r\n");
 
-        let vram_val = format!("\x1b[38;2;0;255;200;1m{} MB\x1b[0m \x1b[38;2;140;150;170m/ {} MB (\x1b[38;2;255;180;0m{:.1}%\x1b[38;2;140;150;170m Bus Load)\x1b[0m", stats.vram_used_mb, stats.vram_total_mb, stats.mem_util_pct);
+        let vram_val = format!(
+            "\x1b[38;2;0;255;200;1m{} MB\x1b[0m \x1b[38;2;140;150;170m/ {} MB (\x1b[38;2;255;180;0m{:.1}%\x1b[38;2;140;150;170m Bus Load)\x1b[0m",
+            stats.vram_used_mb, stats.vram_total_mb, stats.mem_util_pct
+        );
         self.buf.push_str(pad);
-        self.buf.push_str(&format_telemetry_metric("VRAM Memory Load", &vram_val));
-        self.buf.push_str("\r\n");
-
-        self.buf.push_str(pad);
-        self.buf.push_str(&format_section_header("CPU PROCESSOR & LOAD"));
-        self.buf.push_str("\r\n");
-
-        let cpu_name_val = format!("\x1b[38;2;255;255;255;1m{}\x1b[0m", trim_to(&stats.cpu_name, 44));
-        self.buf.push_str(pad);
-        self.buf.push_str(&format_telemetry_metric("CPU Processor", &cpu_name_val));
-        self.buf.push_str("\r\n");
-
-        let cpu_conc_val = format!("\x1b[38;2;0;255;200;1m{} Threads\x1b[0m \x1b[38;2;140;150;170m•\x1b[0m \x1b[38;2;255;180;0;1m{:.1} %\x1b[0m \x1b[38;2;140;150;170mLoad\x1b[0m", stats.cpu_threads, stats.cpu_usage_pct);
-        self.buf.push_str(pad);
-        self.buf.push_str(&format_telemetry_metric("CPU Threads & Load", &cpu_conc_val));
+        self.buf
+            .push_str(&format_telemetry_metric("VRAM Memory Load", &vram_val));
         self.buf.push_str("\r\n");
 
         self.buf.push_str(pad);
-        self.buf.push_str(&format_section_header("ACTIVE WORKLOAD STATE"));
+        self.buf
+            .push_str(&format_section_header("CPU PROCESSOR & LOAD"));
+        self.buf.push_str("\r\n");
+
+        let cpu_name_val = format!(
+            "\x1b[38;2;255;255;255;1m{}\x1b[0m",
+            trim_to(&stats.cpu_name, 44)
+        );
+        self.buf.push_str(pad);
+        self.buf
+            .push_str(&format_telemetry_metric("CPU Processor", &cpu_name_val));
+        self.buf.push_str("\r\n");
+
+        let cpu_conc_val = format!(
+            "\x1b[38;2;0;255;200;1m{} Threads\x1b[0m \x1b[38;2;140;150;170m•\x1b[0m \x1b[38;2;255;180;0;1m{:.1} %\x1b[0m \x1b[38;2;140;150;170mLoad\x1b[0m",
+            stats.cpu_threads, stats.cpu_usage_pct
+        );
+        self.buf.push_str(pad);
+        self.buf.push_str(&format_telemetry_metric(
+            "CPU Threads & Load",
+            &cpu_conc_val,
+        ));
+        self.buf.push_str("\r\n");
+
+        self.buf.push_str(pad);
+        self.buf
+            .push_str(&format_section_header("ACTIVE WORKLOAD STATE"));
         self.buf.push_str("\r\n");
 
         let res_val = format!("\x1b[38;2;255;255;255;1m{}\x1b[0m", config.resolution_name);
         self.buf.push_str(pad);
-        self.buf.push_str(&format_telemetry_metric("Active Resolution", &res_val));
+        self.buf
+            .push_str(&format_telemetry_metric("Active Resolution", &res_val));
         self.buf.push_str("\r\n");
 
-        let bench_f_val = format!("\x1b[38;2;0;255;200;1m{} f/act\x1b[0m \x1b[38;2;140;150;170m({} total frames across 8 acts)\x1b[0m", config.frames_per_scene, config.frames_per_scene * 8);
+        let bench_f_val = format!(
+            "\x1b[38;2;0;255;200;1m{} f/act\x1b[0m \x1b[38;2;140;150;170m({} total frames across 8 acts)\x1b[0m",
+            config.frames_per_scene,
+            config.frames_per_scene * 8
+        );
         self.buf.push_str(pad);
-        self.buf.push_str(&format_telemetry_metric("Benchmark Frames", &bench_f_val));
+        self.buf
+            .push_str(&format_telemetry_metric("Benchmark Frames", &bench_f_val));
         self.buf.push_str("\r\n");
 
-        let scene_val = format!("\x1b[38;2;255;255;255;1m{}\x1b[0m", SCENE_NAMES[(config.selected_scene as usize) % SCENE_NAMES.len()]);
+        let scene_val = format!(
+            "\x1b[38;2;255;255;255;1m{}\x1b[0m",
+            SCENE_NAMES[(config.selected_scene as usize) % SCENE_NAMES.len()]
+        );
         self.buf.push_str(pad);
-        self.buf.push_str(&format_telemetry_metric("Active Scene", &scene_val));
+        self.buf
+            .push_str(&format_telemetry_metric("Active Scene", &scene_val));
         self.buf.push_str("\r\n");
 
         let mode_val = if config.uncapped {
@@ -1143,16 +1487,21 @@ impl CliMenu {
             "\x1b[38;2;0;255;200;1m60 FPS V-Sync (Preview Mode)\x1b[0m"
         };
         self.buf.push_str(pad);
-        self.buf.push_str(&format_telemetry_metric("Framerate Mode", mode_val));
+        self.buf
+            .push_str(&format_telemetry_metric("Framerate Mode", mode_val));
         self.buf.push_str("\r\n");
 
         let failsafe_val = if config.failsafe_enabled {
-            format!("\x1b[38;2;0;255;200;1mActive\x1b[0m \x1b[38;2;140;150;170m(Ceiling: {:.0}°C, Cooldown: {:.0}°C)\x1b[0m", config.max_temp_c, config.target_temp_c)
+            format!(
+                "\x1b[38;2;0;255;200;1mActive\x1b[0m \x1b[38;2;140;150;170m(Ceiling: {:.0}°C, Cooldown: {:.0}°C)\x1b[0m",
+                config.max_temp_c, config.target_temp_c
+            )
         } else {
             "\x1b[38;2;255;60;60;1mDisabled (No Tripwire)\x1b[0m".to_string()
         };
         self.buf.push_str(pad);
-        self.buf.push_str(&format_telemetry_metric("Thermal Tripwire", &failsafe_val));
+        self.buf
+            .push_str(&format_telemetry_metric("Thermal Tripwire", &failsafe_val));
         self.buf.push_str("\r\n");
 
         self.buf.push_str(pad);
@@ -1183,9 +1532,21 @@ pub fn format_section_header(title: &str) -> String {
 pub fn format_menu_row(is_sel: bool, hotkey: &str, label: &str, badge: &str) -> String {
     let cursor = if is_sel { "▶ " } else { "  " };
     let cur_col = if is_sel { "\x1b[38;2;0;255;200;1m" } else { "" };
-    let key_col = if is_sel { "\x1b[38;2;255;255;255;1m" } else { "\x1b[38;2;255;180;0;1m" };
-    let lbl_col = if is_sel { "\x1b[38;2;255;255;255;1m" } else { "\x1b[38;2;220;230;245m" };
-    let bdg_col = if is_sel { "\x1b[38;2;0;255;200;1m" } else { "\x1b[38;2;130;145;165m" };
+    let key_col = if is_sel {
+        "\x1b[38;2;255;255;255;1m"
+    } else {
+        "\x1b[38;2;255;180;0;1m"
+    };
+    let lbl_col = if is_sel {
+        "\x1b[38;2;255;255;255;1m"
+    } else {
+        "\x1b[38;2;220;230;245m"
+    };
+    let bdg_col = if is_sel {
+        "\x1b[38;2;0;255;200;1m"
+    } else {
+        "\x1b[38;2;130;145;165m"
+    };
 
     let hotkey_box = format!("[{}] ", hotkey);
     let prefix_vlen = 2 + visible_len(&hotkey_box);
@@ -1196,20 +1557,28 @@ pub fn format_menu_row(is_sel: bool, hotkey: &str, label: &str, badge: &str) -> 
     let content = if is_sel {
         format!(
             "\x1b[48;2;18;38;58m{}{}{}{}\x1b[0m\x1b[48;2;18;38;58m{}{}\x1b[0m\x1b[48;2;18;38;58m{}{}{}\x1b[0m",
-            cur_col, cursor,
-            key_col, hotkey_box,
-            lbl_col, label,
+            cur_col,
+            cursor,
+            key_col,
+            hotkey_box,
+            lbl_col,
+            label,
             " ".repeat(gap),
-            bdg_col, badge
+            bdg_col,
+            badge
         )
     } else {
         format!(
             "{}{}{}{}{}{}{}{}{}\x1b[0m",
-            cur_col, cursor,
-            key_col, hotkey_box,
-            lbl_col, label,
+            cur_col,
+            cursor,
+            key_col,
+            hotkey_box,
+            lbl_col,
+            label,
             " ".repeat(gap),
-            bdg_col, badge
+            bdg_col,
+            badge
         )
     };
 
@@ -1225,7 +1594,11 @@ pub fn format_choice_row(
 ) -> String {
     let cursor = if is_sel { "▶ " } else { "  " };
     let cur_col = if is_sel { "\x1b[38;2;0;255;200;1m" } else { "" };
-    let key_col = if is_sel { "\x1b[38;2;255;255;255;1m" } else { "\x1b[38;2;255;180;0;1m" };
+    let key_col = if is_sel {
+        "\x1b[38;2;255;255;255;1m"
+    } else {
+        "\x1b[38;2;255;180;0;1m"
+    };
 
     let is_back = hotkey == "0" || hotkey == "Esc";
     let (radio_glyph, radio_col) = if is_back {
@@ -1262,22 +1635,32 @@ pub fn format_choice_row(
     let content = if is_sel {
         format!(
             "\x1b[48;2;18;38;58m{}{}{}{}{}{}{}{}{}{}{}\x1b[0m",
-            cur_col, cursor,
-            key_col, hotkey_box,
-            radio_col, radio_box,
-            lbl_col, label,
+            cur_col,
+            cursor,
+            key_col,
+            hotkey_box,
+            radio_col,
+            radio_box,
+            lbl_col,
+            label,
             " ".repeat(gap),
-            bdg_col, badge
+            bdg_col,
+            badge
         )
     } else {
         format!(
             "{}{}{}{}{}{}{}{}{}{}{}\x1b[0m",
-            cur_col, cursor,
-            key_col, hotkey_box,
-            radio_col, radio_box,
-            lbl_col, label,
+            cur_col,
+            cursor,
+            key_col,
+            hotkey_box,
+            radio_col,
+            radio_box,
+            lbl_col,
+            label,
             " ".repeat(gap),
-            bdg_col, badge
+            bdg_col,
+            badge
         )
     };
 
@@ -1367,8 +1750,8 @@ pub fn visible_len(s: &str) -> usize {
 
 pub fn format_line(visible_content: &str) -> String {
     let vlen = visible_len(visible_content);
-    let target = 72;
-    let pad = if vlen < target { target - vlen } else { 0 };
+    let target: usize = 72;
+    let pad = target.saturating_sub(vlen);
     format!(
         "\x1b[38;2;0;220;255m│\x1b[0m {}{}\x1b[0m \x1b[38;2;0;220;255m│\x1b[0m",
         visible_content,
@@ -1378,8 +1761,8 @@ pub fn format_line(visible_content: &str) -> String {
 
 pub fn format_centered(text: &str) -> String {
     let vlen = visible_len(text);
-    let target = 72;
-    let total_pad = if vlen < target { target - vlen } else { 0 };
+    let target: usize = 72;
+    let total_pad = target.saturating_sub(vlen);
     let left_pad = total_pad / 2;
     let right_pad = total_pad - left_pad;
     format!(
@@ -1406,9 +1789,24 @@ mod tests {
     #[test]
     fn test_menu_box_widths() {
         // Border characters: 1 + 74 + 1 = 76
-        assert_eq!("┌──────────────────────────────────────────────────────────────────────────┐".chars().count(), 76);
-        assert_eq!("├──────────────────────────────────────────────────────────────────────────┤".chars().count(), 76);
-        assert_eq!("└──────────────────────────────────────────────────────────────────────────┘".chars().count(), 76);
+        assert_eq!(
+            "┌──────────────────────────────────────────────────────────────────────────┐"
+                .chars()
+                .count(),
+            76
+        );
+        assert_eq!(
+            "├──────────────────────────────────────────────────────────────────────────┤"
+                .chars()
+                .count(),
+            76
+        );
+        assert_eq!(
+            "└──────────────────────────────────────────────────────────────────────────┘"
+                .chars()
+                .count(),
+            76
+        );
 
         // Test visible_len with and without ANSI escape sequences
         let plain = "Hello World";
@@ -1429,24 +1827,45 @@ mod tests {
         assert_eq!(visible_len(&header), 76);
 
         // Test menu rows
-        let row_sel = format_menu_row(true, "1", "Launch Interactive Demo", "[ 60 FPS V-Sync Preview ]");
+        let row_sel = format_menu_row(
+            true,
+            "1",
+            "Launch Interactive Demo",
+            "[ 60 FPS V-Sync Preview ]",
+        );
         assert_eq!(visible_len(&row_sel), 76);
 
-        let row_unsel = format_menu_row(false, "2", "Launch GPU Stress Test", "[ 100% Uncapped Max Load ]");
+        let row_unsel = format_menu_row(
+            false,
+            "2",
+            "Launch GPU Stress Test",
+            "[ 100% Uncapped Max Load ]",
+        );
         assert_eq!(visible_len(&row_unsel), 76);
 
         // Test choice rows
-        let choice_active = format_choice_row(true, "1", true, "4K UHD", "[ 3840x2160 · 8.29 Mpix ]");
+        let choice_active =
+            format_choice_row(true, "1", true, "4K UHD", "[ 3840x2160 · 8.29 Mpix ]");
         assert_eq!(visible_len(&choice_active), 76);
 
-        let choice_inactive = format_choice_row(false, "2", false, "1080p FHD", "[ 1920x1080 · 2.07 Mpix ]");
+        let choice_inactive =
+            format_choice_row(false, "2", false, "1080p FHD", "[ 1920x1080 · 2.07 Mpix ]");
         assert_eq!(visible_len(&choice_inactive), 76);
 
-        let choice_back = format_choice_row(false, "0", false, "Return to Main Menu", "[ Keep Current Selection ]");
+        let choice_back = format_choice_row(
+            false,
+            "0",
+            false,
+            "Return to Main Menu",
+            "[ Keep Current Selection ]",
+        );
         assert_eq!(visible_len(&choice_back), 76);
 
         // Test telemetry metrics
-        let telem_row = format_telemetry_metric("GPU Device", "\x1b[38;2;255;255;255;1mNVIDIA GeForce RTX 4090\x1b[0m");
+        let telem_row = format_telemetry_metric(
+            "GPU Device",
+            "\x1b[38;2;255;255;255;1mNVIDIA GeForce RTX 4090\x1b[0m",
+        );
         assert_eq!(visible_len(&telem_row), 76);
     }
 
@@ -1464,7 +1883,10 @@ mod tests {
     #[test]
     fn test_format_badges() {
         assert_eq!(format_resolution_badge(3840, 2160), "[ 4K UHD: 3840x2160 ]");
-        assert_eq!(format_resolution_badge(1920, 1080), "[ 1080p FHD: 1920x1080 ]");
+        assert_eq!(
+            format_resolution_badge(1920, 1080),
+            "[ 1080p FHD: 1920x1080 ]"
+        );
         assert_eq!(format_resolution_badge(0, 0), "[ Viewport 1:1 ]");
 
         assert_eq!(format_scene_badge(0), "[ Act I: Atmospheric Waves ]");

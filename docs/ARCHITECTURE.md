@@ -84,7 +84,47 @@ To guarantee hardware stability and deterministic benchmark scoring across diver
      - **Benchmark Math & Scorer**: Tests frametime accumulation, 1% low calculations, arithmetic scene weighting, and JSON report round-tripping.
      - **Terminal Engine**: Tests resolution tags, ANSI sequence stripping, and half-block TrueColor rasterizer initialization.
 2. **Automated Developer Test Harness (`cargo test`)**:
-   - 35 automated unit and integration tests covering unit logic (`src/lib.rs`), CLI parsing (`tests/cli_tests.rs`), and GPU context execution (`tests/pipeline_integration.rs`).
+   - 66 automated unit and integration tests covering unit logic (`src/lib.rs`), CLI parsing (`tests/cli_tests.rs`), and GPU context execution (`tests/pipeline_integration.rs`).
    - Run in one step via `./scripts/run_tests.sh`.
+
+---
+
+## 6. Dynamic VRAM Adaptation & Headroom Failsafes
+
+To reliably support GPUs spanning 4GB/8GB entry-level discrete hardware up to 200GB+ datacenter accelerators (e.g. NVIDIA H100/H200, AMD Instinct MI300X), `dyno_term` implements a dynamic memory adaptation and failsafe system:
+
+1. **Hardware Memory Querying (`GpuMemoryInfo`)**:
+   - Detects physical device VRAM limits via `wgpu::Limits` and Linux DRM `mem_info_vram_total` / `mem_info_vram_used` sysfs nodes.
+   - Categorizes hardware into test tiers (`VramTestTier`): `Light`, `Balanced`, `Stress`, and `MaxSafe`.
+2. **Pre-flight Headroom Verification (`VramHeadroomCheck`)**:
+   - Evaluates memory demand prior to allocating storage buffers or dispatching compute workgroups.
+   - Computes expected memory footprints against active available headroom with a safety margin (defaulting to 256 MB or 15% of free memory).
+   - Rejects unsupportable allocations cleanly rather than provoking native device crashes or OS OOM kills.
+3. **Out-of-Bounds & Out-of-Memory Safeguards**:
+   - GPU `ComputePipelineManager::try_resize` inspects dimension validity (`width > 0 && height > 0`) and buffer byte limits before reallocating.
+   - CPU `NBodySimulation` enforces zero-particle early returns and clamps massive particle counts safely.
+   - Terminal rasterizer guards against zero-dimension slices and mismatched buffer strides.
+
+---
+
+## 7. Decoupled Runner Architecture (`src/runner/`)
+
+To eliminate the "god-file" anti-pattern and avoid argument explosion across the application lifecycle, execution is decoupled into dedicated runner modules:
+
+```
+src/
+├── main.rs                   # Lightweight CLI entrypoint & menu dispatcher (< 300 lines)
+├── runner/
+│   ├── mod.rs                # Runner interface & re-exports
+│   ├── session.rs            # TerminalSession context & option structs
+│   ├── demo.rs               # Interactive demo loop & event processing
+│   ├── benchmark.rs          # Finite deterministic benchmark pass execution & scorecards
+│   ├── consistency.rs        # Multi-iteration consistency suite & thermal cooldown screens
+│   └── capture.rs            # Headless screenshot rendering & PPM output
+```
+
+By packaging session dependencies (`pipeline`, `renderer`, `telemetry`, `adapter_info`, `term_width`, `term_height`, `res_tag`) into `TerminalSession<'a>` and encapsulating workload settings into typed options (`DemoOptions`, `BenchmarkOptions`, `ConsistencyOptions`), runner functions maintain low cyclomatic complexity, clear boundaries, and strict compliance with zero-warning lint standards.
+
+---
 
 See [docs/TESTING.md](TESTING.md) for full testing documentation, [docs/SHADERS_AND_SCENES.md](SHADERS_AND_SCENES.md) for complete mathematical formulations, and [docs/SCENE_SPECIFICATION_STANDARD.md](SCENE_SPECIFICATION_STANDARD.md) for the mandatory engineering pipeline for contributing new acts and tests.

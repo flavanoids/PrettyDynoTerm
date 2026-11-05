@@ -92,7 +92,10 @@ pub fn load_baseline(path: &str) -> Option<BenchmarkReport> {
 }
 
 /// Compares a current benchmark report against a baseline report.
-pub fn compare_reports(current: &BenchmarkReport, baseline: &BenchmarkReport) -> BenchmarkComparison {
+pub fn compare_reports(
+    current: &BenchmarkReport,
+    baseline: &BenchmarkReport,
+) -> BenchmarkComparison {
     let score_delta_pts = current.overall_score - baseline.overall_score;
     let score_delta_pct = if baseline.overall_score > 0.0 {
         (score_delta_pts / baseline.overall_score) * 100.0
@@ -200,7 +203,9 @@ pub fn format_comparison_table(comp: &BenchmarkComparison) -> String {
     let mut out = String::with_capacity(4096);
 
     out.push_str("\x1b[38;2;0;255;200;1m┌──────────────────────────────────────────────────────────────────────────────┐\r\n");
-    out.push_str("│               DYNO_TERM BENCHMARK PERFORMANCE COMPARISON                     │\r\n");
+    out.push_str(
+        "│               DYNO_TERM BENCHMARK PERFORMANCE COMPARISON                     │\r\n",
+    );
     out.push_str("├──────────────────────────────────────────────────────────────────────────────┤\x1b[0m\r\n");
 
     let cur_time = if comp.current_timestamp.len() > 19 {
@@ -300,11 +305,16 @@ pub fn format_comparison_table(comp: &BenchmarkComparison) -> String {
 }
 
 /// Renders a tabular overview of all historical benchmark runs.
-pub fn format_history_table(history: &[BenchmarkReport], baseline_timestamp: Option<&str>) -> String {
+pub fn format_history_table(
+    history: &[BenchmarkReport],
+    baseline_timestamp: Option<&str>,
+) -> String {
     let mut out = String::with_capacity(4096);
 
     out.push_str("\x1b[38;2;0;255;200;1m================================================================================\r\n");
-    out.push_str("                       DYNO_TERM BENCHMARK HISTORY                              \r\n");
+    out.push_str(
+        "                       DYNO_TERM BENCHMARK HISTORY                              \r\n",
+    );
     out.push_str("================================================================================\x1b[0m\r\n");
 
     if history.is_empty() {
@@ -317,7 +327,9 @@ pub fn format_history_table(history: &[BenchmarkReport], baseline_timestamp: Opt
     out.push_str("\x1b[38;2;60;70;90m  ────────────────────────────────────────────────────────────────────────────\x1b[0m\r\n");
 
     for (i, r) in history.iter().enumerate() {
-        let is_base = baseline_timestamp.map(|bt| bt == r.timestamp).unwrap_or(false);
+        let is_base = baseline_timestamp
+            .map(|bt| bt == r.timestamp)
+            .unwrap_or(false);
         let tag = if is_base {
             "\x1b[38;2;0;255;128;1m[BASELINE]\x1b[0m"
         } else {
