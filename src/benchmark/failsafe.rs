@@ -30,9 +30,14 @@ impl Default for ThermalFailsafe {
 
 impl ThermalFailsafe {
     pub fn new(max_hotspot_c: f32, enabled: bool) -> Self {
+        let safe_hotspot_c = if max_hotspot_c.is_finite() && (50.0..=125.0).contains(&max_hotspot_c) {
+            max_hotspot_c
+        } else {
+            105.0
+        };
         Self {
             enabled,
-            max_hotspot_c,
+            max_hotspot_c: safe_hotspot_c,
             max_edge_c: 95.0,
             fan_stall_threshold_c: 78.0,
             fan_stall_consecutive_frames: 0,
@@ -48,13 +53,13 @@ impl ThermalFailsafe {
 
         // 1. Silicon Junction / Hotspot Ceiling Check
         // Trigger if hotspot reaches user ceiling (default 105°C) or within 2.0°C of VBIOS crit limit.
-        let hotspot_limit = if stats.gpu_hotspot_crit_c > 0.0 {
+        let hotspot_limit = if stats.gpu_hotspot_crit_c.is_finite() && stats.gpu_hotspot_crit_c > 0.0 {
             (stats.gpu_hotspot_crit_c - 2.0).min(self.max_hotspot_c)
         } else {
             self.max_hotspot_c
         };
 
-        if stats.gpu_hotspot_c > 0.0 && stats.gpu_hotspot_c >= hotspot_limit {
+        if stats.gpu_hotspot_c.is_finite() && stats.gpu_hotspot_c > 0.0 && stats.gpu_hotspot_c >= hotspot_limit {
             return Some(ThermalTripReport {
                 sensor_type: "GPU Silicon Junction (Hotspot)".to_string(),
                 current_temp_c: stats.gpu_hotspot_c,
@@ -69,13 +74,13 @@ impl ThermalFailsafe {
 
         // 2. GPU Edge / Package Temperature Ceiling Check
         // Trigger if edge temp reaches 95°C or within 3.0°C of VBIOS crit limit.
-        let edge_limit = if stats.gpu_temp_crit_c > 0.0 {
+        let edge_limit = if stats.gpu_temp_crit_c.is_finite() && stats.gpu_temp_crit_c > 0.0 {
             (stats.gpu_temp_crit_c - 3.0).min(self.max_edge_c)
         } else {
             self.max_edge_c
         };
 
-        if stats.gpu_temp_c > 0.0 && stats.gpu_temp_c >= edge_limit {
+        if stats.gpu_temp_c.is_finite() && stats.gpu_temp_c > 0.0 && stats.gpu_temp_c >= edge_limit {
             return Some(ThermalTripReport {
                 sensor_type: "GPU Package / Edge".to_string(),
                 current_temp_c: stats.gpu_temp_c,
@@ -459,11 +464,7 @@ pub fn format_emergency_box(trip: &ThermalTripReport) -> String {
     out.push_str(&format_emergency_line(&line2));
     out.push_str("\r\n");
 
-    let truncated_msg = if trip.message.len() > 60 {
-        &trip.message[..60]
-    } else {
-        &trip.message
-    };
+    let truncated_msg = crate::benchmark::safe_truncate(&trip.message, 60);
     let line3 = format!("DETAILS : \x1b[38;2;255;180;0m{}\x1b[0m", truncated_msg);
     out.push_str(&format_emergency_line(&line3));
     out.push_str("\r\n");
@@ -536,6 +537,21 @@ mod tests {
         let trip = failsafe.check(&stats).expect("Should trip on edge breach");
         assert_eq!(trip.sensor_type, "GPU Package / Edge");
         assert_eq!(trip.current_temp_c, 96.0);
+    }
+
+    #[test]
+    fn test_thermal_failsafe_nan_guard() {
+        let mut failsafe = ThermalFailsafe::new(f32::NAN, true);
+        // Default safe hotspot fallback should be 105.0
+        assert_eq!(failsafe.max_hotspot_c, 105.0);
+
+        let stats = HardwareStats {
+            gpu_temp_c: 80.0,
+            gpu_hotspot_c: 106.0,
+            ..Default::default()
+        };
+        let trip = failsafe.check(&stats).expect("Should trip on default 105.0 ceiling even with initial NaN");
+        assert_eq!(trip.current_temp_c, 106.0);
     }
 
     #[test]

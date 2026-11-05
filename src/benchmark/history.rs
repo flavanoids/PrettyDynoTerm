@@ -1,4 +1,4 @@
-use super::BenchmarkReport;
+use super::{safe_truncate, sanitize_terminal_string, BenchmarkReport};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -208,16 +208,8 @@ pub fn format_comparison_table(comp: &BenchmarkComparison) -> String {
     );
     out.push_str("├──────────────────────────────────────────────────────────────────────────────┤\x1b[0m\r\n");
 
-    let cur_time = if comp.current_timestamp.len() > 19 {
-        &comp.current_timestamp[..19]
-    } else {
-        &comp.current_timestamp
-    };
-    let base_time = if comp.baseline_timestamp.len() > 19 {
-        &comp.baseline_timestamp[..19]
-    } else {
-        &comp.baseline_timestamp
-    };
+    let cur_time = sanitize_terminal_string(safe_truncate(&comp.current_timestamp, 19));
+    let base_time = sanitize_terminal_string(safe_truncate(&comp.baseline_timestamp, 19));
 
     out.push_str(&format!(
         "  \x1b[38;2;120;140;160mCurrent Run:\x1b[0m  \x1b[1m{:<22}\x1b[0m \x1b[38;2;120;140;160mBaseline:\x1b[0m \x1b[1m{}\x1b[0m\r\n",
@@ -241,11 +233,7 @@ pub fn format_comparison_table(comp: &BenchmarkComparison) -> String {
 
     // Per Scene Results
     for sc in &comp.scene_comparisons {
-        let sc_name_short = if sc.scene_name.len() > 24 {
-            &sc.scene_name[..24]
-        } else {
-            &sc.scene_name
-        };
+        let sc_name_short = sanitize_terminal_string(safe_truncate(&sc.scene_name, 24));
 
         let cur_fps_str = format!("{:.1} FPS", sc.current_fps);
         let base_fps_str = format!("{:.1} FPS", sc.baseline_fps);
@@ -336,17 +324,8 @@ pub fn format_history_table(
             ""
         };
 
-        let short_time = if r.timestamp.len() > 19 {
-            &r.timestamp[..19]
-        } else {
-            &r.timestamp
-        };
-
-        let gpu_short = if r.system_info.gpu_name.len() > 24 {
-            &r.system_info.gpu_name[..24]
-        } else {
-            &r.system_info.gpu_name
-        };
+        let short_time = sanitize_terminal_string(safe_truncate(&r.timestamp, 19));
+        let gpu_short = sanitize_terminal_string(safe_truncate(&r.system_info.gpu_name, 24));
 
         out.push_str(&format!(
             "  {:<2} {:<20} \x1b[1m{:<15}\x1b[0m {:<24} {}\r\n",

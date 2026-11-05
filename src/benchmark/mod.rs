@@ -20,6 +20,23 @@ pub use telemetry::{
     GpuTelemetryAssessment, SensorMetric, TelemetrySnapshot, format_gpu_assessment_box,
 };
 
+/// Safely truncates a string slice to at most `max_chars` unicode characters without slicing mid-codepoint.
+pub fn safe_truncate(s: &str, max_chars: usize) -> &str {
+    match s.char_indices().nth(max_chars) {
+        Some((idx, _)) => &s[..idx],
+        None => s,
+    }
+}
+
+/// Sanitizes untrusted strings for safe terminal display, stripping escape characters
+/// and dangerous control sequences while preserving printable characters.
+pub fn sanitize_terminal_string(input: &str) -> String {
+    input
+        .chars()
+        .filter(|&c| c != '\x1b' && (!c.is_control() || c == ' '))
+        .collect()
+}
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::time::{Duration, Instant};
@@ -670,5 +687,26 @@ mod tests {
         assert!(
             BenchmarkScorer::scene_flop_multiplier(1) > BenchmarkScorer::scene_flop_multiplier(0)
         );
+    }
+
+    #[test]
+    fn test_safe_truncate_multibyte_utf8() {
+        // String with 4-byte emoji right at boundary
+        let s = "2026-11-05 17:25:🚀Engine";
+        let truncated = safe_truncate(s, 18);
+        assert_eq!(truncated, "2026-11-05 17:25:🚀");
+        let truncated_short = safe_truncate(s, 17);
+        assert_eq!(truncated_short, "2026-11-05 17:25:");
+        // Normal ASCII string shorter than max_chars
+        assert_eq!(safe_truncate("short", 10), "short");
+    }
+
+    #[test]
+    fn test_sanitize_terminal_string() {
+        let dirty = "GeForce\x1b[31m RTX\x1b[0m \x074090\t";
+        let clean = sanitize_terminal_string(dirty);
+        assert_eq!(clean, "GeForce[31m RTX[0m 4090");
+        assert!(!clean.contains('\x1b'));
+        assert!(!clean.contains('\x07'));
     }
 }

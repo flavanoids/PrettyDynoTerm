@@ -1,10 +1,10 @@
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::benchmark::{
     BenchmarkReport, BenchmarkScorer, DEFAULT_BASELINE_FILE, DEFAULT_HISTORY_FILE, SystemReport,
     ThermalFailsafe, compare_reports, format_comparison_table, format_gpu_assessment_box,
-    load_baseline, print_emergency_thermal_box,
+    load_baseline, print_emergency_thermal_box, sanitize_terminal_string,
 };
 use crate::cpu::NBodySimulation;
 use crate::gpu::pipeline::Uniforms;
@@ -55,10 +55,14 @@ pub fn execute_benchmark_pass(
             if event::poll(Duration::from_millis(0))?
                 && let Event::Key(key) = event::read()?
             {
+                if (key.modifiers.contains(KeyModifiers::CONTROL)
+                    && (key.code == KeyCode::Char('c') || key.code == KeyCode::Char('C')))
+                    || key.code == KeyCode::Char('q')
+                    || key.code == KeyCode::Esc
+                {
+                    return Ok(BenchmarkPassResult::AbortedByUser);
+                }
                 match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => {
-                        return Ok(BenchmarkPassResult::AbortedByUser);
-                    }
                     KeyCode::Char('h') | KeyCode::Char('H') => {
                         hud.toggle_mode();
                     }
@@ -265,7 +269,12 @@ pub fn run_benchmark(
         }
     };
 
-    let _ = BenchmarkScorer::save_report(&report, &opts.output_path);
+    if let Err(e) = BenchmarkScorer::save_report(&report, &opts.output_path) {
+        eprintln!(
+            "\r\n\x1b[38;2;255;80;80;1m⚠ Warning: Failed to save benchmark report to '{}': {}\x1b[0m",
+            opts.output_path, e
+        );
+    }
     let _ = crate::benchmark::append_to_history(&report, DEFAULT_HISTORY_FILE);
     print_scorecard(&report, &opts.output_path, session.res_tag);
 
@@ -284,6 +293,10 @@ pub fn run_benchmark(
 }
 
 pub fn print_scorecard(report: &BenchmarkReport, output_path: &str, resolution: &str) {
+    let clean_gpu = sanitize_terminal_string(&report.system_info.gpu_name);
+    let clean_backend = sanitize_terminal_string(&report.system_info.gpu_backend);
+    let clean_cpu = sanitize_terminal_string(&report.system_info.cpu_name);
+
     println!();
     println!(
         "\x1b[38;2;0;220;255;1m┌──────────────────────────────────────────────────────────────────────────┐"
@@ -292,17 +305,11 @@ pub fn print_scorecard(report: &BenchmarkReport, output_path: &str, resolution: 
     println!("├──────────────────────────────────────────────────────────────────────────┤\x1b[0m");
     println!(
         "\x1b[38;2;140;150;170m│ GPU: \x1b[38;2;255;255;255;1m{:<67}\x1b[38;2;0;220;255m│",
-        format!(
-            "{} ({})",
-            report.system_info.gpu_name, report.system_info.gpu_backend
-        )
+        format!("{} ({})", clean_gpu, clean_backend)
     );
     println!(
         "\x1b[38;2;140;150;170m│ CPU: \x1b[38;2;255;255;255;1m{:<67}\x1b[38;2;0;220;255m│",
-        format!(
-            "{} ({} Threads)",
-            report.system_info.cpu_name, report.system_info.cpu_threads
-        )
+        format!("{} ({} Threads)", clean_cpu, report.system_info.cpu_threads)
     );
     println!(
         "\x1b[38;2;140;150;170m│ Mode: \x1b[38;2;0;255;200;1m{:<29}\x1b[38;2;140;150;170m│ Target: \x1b[38;2;255;180;0;1m{:<27}\x1b[38;2;0;220;255m│",

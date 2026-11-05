@@ -19,6 +19,16 @@ use dyno_term::terminal::{
 use std::sync::Arc;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Install global terminal restoration panic hook
+    let default_panic_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        let _ = crossterm::terminal::disable_raw_mode();
+        use std::io::Write;
+        let _ = write!(std::io::stdout(), "\x1b[0m\x1b[?25h\x1b[?1049l");
+        let _ = std::io::stdout().flush();
+        default_panic_hook(panic_info);
+    }));
+
     let args = Args::parse();
 
     if args.test {
@@ -154,6 +164,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    let safe_max_temp = if args.max_temp.is_finite() && (50.0..=125.0).contains(&args.max_temp) {
+        args.max_temp
+    } else {
+        105.0
+    };
+    let safe_target_temp = if args.target_temp.is_finite() && (30.0..=90.0).contains(&args.target_temp) {
+        args.target_temp
+    } else {
+        55.0
+    };
+
     if run_menu {
         let all_adapters = GpuContext::list_adapters();
         let mut config = MenuConfig {
@@ -167,8 +188,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             output_path: args.output.clone(),
             consistency_iterations: 5,
             cooldown_seconds: args.cooldown,
-            max_temp_c: args.max_temp,
-            target_temp_c: args.target_temp,
+            max_temp_c: safe_max_temp,
+            target_temp_c: safe_target_temp,
             failsafe_enabled: !args.no_failsafe,
         };
 
@@ -379,8 +400,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let opts = ConsistencyOptions {
             iterations,
             cooldown_seconds: args.cooldown,
-            target_temp_c: args.target_temp,
-            max_temp_c: args.max_temp,
+            target_temp_c: safe_target_temp,
+            max_temp_c: safe_max_temp,
             failsafe_enabled: !args.no_failsafe,
             frames_per_scene: args.frames,
             output_path: out_file.to_string(),
@@ -399,7 +420,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let opts = BenchmarkOptions {
             frames_per_scene: args.frames,
             output_path: args.output.clone(),
-            max_temp_c: args.max_temp,
+            max_temp_c: safe_max_temp,
             failsafe_enabled: !args.no_failsafe,
         };
         run_benchmark(&mut session, &opts)?;
@@ -416,7 +437,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let opts = DemoOptions {
             initial_scene: args.scene,
             initial_uncapped: args.uncapped,
-            max_temp_c: args.max_temp,
+            max_temp_c: safe_max_temp,
             failsafe_enabled: !args.no_failsafe,
         };
         run_interactive_demo(&mut session, &opts)?;

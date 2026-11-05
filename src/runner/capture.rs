@@ -10,7 +10,10 @@ pub fn capture_screenshots(
 
     let capture_w = 960u32;
     let capture_h = 540u32;
-    let mut buf = vec![0u8; (capture_w * capture_h * 4) as usize];
+    let buf_size = (capture_w as usize)
+        .saturating_mul(capture_h as usize)
+        .saturating_mul(4);
+    let mut buf = vec![0u8; buf_size];
 
     let scene_files = [
         "act1_ocean_waves",

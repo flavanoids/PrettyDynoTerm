@@ -1,4 +1,4 @@
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use std::time::{Duration, Instant};
 
 use crate::benchmark::ThermalFailsafe;
@@ -57,6 +57,11 @@ pub fn run_interactive_demo(
         {
             if key.kind != KeyEventKind::Press {
                 continue;
+            }
+            if key.modifiers.contains(KeyModifiers::CONTROL)
+                && (key.code == KeyCode::Char('c') || key.code == KeyCode::Char('C'))
+            {
+                break;
             }
             match key.code {
                 KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => break,

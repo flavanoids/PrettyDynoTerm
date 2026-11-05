@@ -201,7 +201,7 @@ impl TelemetryCollector {
                     w.peak_gpu_util_pct = peak_util;
                 }
 
-                thread::sleep(Duration::from_millis(15));
+                thread::sleep(Duration::from_millis(100));
             }
         });
 

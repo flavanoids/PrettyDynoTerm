@@ -1,4 +1,4 @@
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use std::time::{Duration, Instant};
 
 use crate::benchmark::{
@@ -33,6 +33,11 @@ pub fn run_cooldown_screen(
             && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
         {
+            if key.modifiers.contains(KeyModifiers::CONTROL)
+                && (key.code == KeyCode::Char('c') || key.code == KeyCode::Char('C'))
+            {
+                return Ok(false);
+            }
             match key.code {
                 KeyCode::Char(' ') | KeyCode::Enter => {
                     return Ok(true);
@@ -243,9 +248,15 @@ pub fn run_consistency_suite(
         session.res_tag,
     );
 
-    let _ = save_consistency_report(&report, &opts.output_path);
     print!("{}", format_consistency_scorecard(&report));
-    println!("Consistency report saved to: {}", opts.output_path);
+    if let Err(e) = save_consistency_report(&report, &opts.output_path) {
+        eprintln!(
+            "\r\n\x1b[38;2;255;80;80;1m⚠ Warning: Failed to save consistency report to '{}': {}\x1b[0m",
+            opts.output_path, e
+        );
+    } else {
+        println!("Consistency report saved to: {}", opts.output_path);
+    }
 
     Ok(())
 }

@@ -445,6 +445,8 @@ impl ComputePipelineManager {
         }
 
         self.update_preview_buffers(dst_width, dst_height);
+        let actual_dst_w = self.preview_width;
+        let actual_dst_h = self.preview_height;
 
         self.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(uniforms));
@@ -452,8 +454,8 @@ impl ComputePipelineManager {
         let ds_uniforms = DownsampleUniforms {
             src_width: self.width,
             src_height: self.height,
-            dst_width,
-            dst_height,
+            dst_width: actual_dst_w,
+            dst_height: actual_dst_h,
         };
         self.queue.write_buffer(
             &self.downsample_uniform_buffer,
@@ -488,13 +490,15 @@ impl ComputePipelineManager {
             });
             compute_pass.set_pipeline(&self.downsample_pipeline);
             compute_pass.set_bind_group(0, &self.downsample_bind_group, &[]);
-            let workgroups_x = dst_width.div_ceil(16);
-            let workgroups_y = dst_height.div_ceil(16);
+            let workgroups_x = actual_dst_w.div_ceil(16);
+            let workgroups_y = actual_dst_h.div_ceil(16);
             compute_pass.dispatch_workgroups(workgroups_x, workgroups_y, 1);
         }
 
         // 3. Copy tiny downsampled buffer (~38 KB) to staging buffer
-        let preview_size = (dst_width * dst_height * 4) as u64;
+        let preview_size = (actual_dst_w as u64)
+            .saturating_mul(actual_dst_h as u64)
+            .saturating_mul(4);
         encoder.copy_buffer_to_buffer(
             &self.preview_storage_buffer,
             0,
@@ -612,7 +616,9 @@ impl ComputePipelineManager {
             compute_pass.dispatch_workgroups(workgroups_x, workgroups_y, 1);
         }
 
-        let buffer_size = (self.width * self.height * 4) as u64;
+        let buffer_size = (self.width as u64)
+            .saturating_mul(self.height as u64)
+            .saturating_mul(4);
         encoder.copy_buffer_to_buffer(
             &self.storage_buffer,
             0,

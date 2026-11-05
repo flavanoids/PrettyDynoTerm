@@ -13,22 +13,30 @@ pub use session::{
     CooldownOptions, DemoOptions, TerminalSession,
 };
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use std::time::Duration;
 
 pub fn wait_for_menu_return() -> Result<(), Box<dyn std::error::Error>> {
     crossterm::terminal::enable_raw_mode()?;
-    loop {
-        if event::poll(Duration::from_millis(50))?
-            && let Event::Key(key) = event::read()?
-            && key.kind == KeyEventKind::Press
-        {
-            match key.code {
-                KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Esc | KeyCode::Char('q') => break,
-                _ => {}
+    let res = (|| -> Result<(), Box<dyn std::error::Error>> {
+        loop {
+            if event::poll(Duration::from_millis(50))?
+                && let Event::Key(key) = event::read()?
+                && key.kind == KeyEventKind::Press
+            {
+                if key.modifiers.contains(KeyModifiers::CONTROL)
+                    && (key.code == KeyCode::Char('c') || key.code == KeyCode::Char('C'))
+                {
+                    break;
+                }
+                match key.code {
+                    KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Esc | KeyCode::Char('q') => break,
+                    _ => {}
+                }
             }
         }
-    }
-    crossterm::terminal::disable_raw_mode()?;
-    Ok(())
+        Ok(())
+    })();
+    let _ = crossterm::terminal::disable_raw_mode();
+    res
 }
