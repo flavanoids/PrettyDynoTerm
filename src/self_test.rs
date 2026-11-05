@@ -115,6 +115,13 @@ fn test_cpu_suite() -> TestReport {
         details.push("Preview frame buffer rasterizer & color blending verified".to_string());
     }
 
+    // Test zero-particle and out-of-bounds fail safes
+    let mut zero_sim = NBodySimulation::new(0, 80, 40);
+    zero_sim.step_multithreaded(0.016);
+    let mut small_buf = vec![0u8; 10];
+    zero_sim.rasterize_to_preview(&mut small_buf, 80, 40);
+    details.push("CPU N-Body zero-particle & buffer bounds fail safes verified".to_string());
+
     let duration = t0.elapsed();
     print_suite_status(1, 6, "CPU Simulation & N-Body Physics Engine", passed, duration, &details);
     TestReport {
@@ -241,18 +248,39 @@ fn test_gpu_suite(preferred_gpu: Option<usize>) -> TestReport {
     let info = &gpu_ctx.adapter_info;
     details.push(format!("Active GPU: {} | {:?} | {:?}", info.name, info.backend, info.device_type));
 
+    let mem_info = crate::benchmark::failsafe::GpuMemoryInfo::detect(&gpu_ctx.device);
+    let gpu_tier_str = if mem_info.total_vram_mb >= 100_000 {
+        "200GB+ Datacenter Scale"
+    } else if mem_info.total_vram_mb >= 16_000 {
+        "High-End VRAM"
+    } else if mem_info.total_vram_mb >= 6_000 {
+        "8GB Discrete Scale"
+    } else {
+        "Entry / Integrated Scale"
+    };
+    details.push(format!(
+        "GPU Memory: {} MB total ({} MB free, {} MB used) [{}]",
+        mem_info.total_vram_mb, mem_info.free_vram_mb, mem_info.used_vram_mb, gpu_tier_str
+    ));
+
+    // Dynamically adapt compute test resolution to GPU VRAM capacity
+    let (test_w, test_h) = mem_info.recommend_resolution(crate::benchmark::failsafe::VramTestTier::Balanced);
+    let single_buf_mb = (test_w as f64 * test_h as f64 * 4.0) / (1024.0 * 1024.0);
+    details.push(format!(
+        "Dynamically adapted test resolution: {}x{} ({:.1} MB single buffer, {:.2} Mpix)",
+        test_w, test_h, single_buf_mb, (test_w as f64 * test_h as f64) / 1_000_000.0
+    ));
+
     // Verify Pre-Flight VRAM Headroom Guard
-    let test_w = 320u32;
-    let test_h = 180u32;
     let vram_guard_check = crate::benchmark::failsafe::VramHeadroomCheck::evaluate(&gpu_ctx.device, test_w, test_h, None);
     if vram_guard_check.is_ok() {
         details.push("Pre-flight VRAM headroom & hardware buffer limits guard verified".to_string());
     } else {
         passed = false;
-        details.push("Pre-flight VRAM guard failed at 320x180 test resolution".to_string());
+        details.push(format!("Pre-flight VRAM guard failed at adapted {}x{} resolution", test_w, test_h));
     }
 
-    // Create ComputePipelineManager at test resolution (320x180)
+    // Create ComputePipelineManager at dynamically adapted test resolution
     let prev_w = 80u32;
     let prev_h = 40u32;
 
@@ -280,7 +308,7 @@ fn test_gpu_suite(preferred_gpu: Option<usize>) -> TestReport {
 
     details.push(format!("Pipeline instantiated @ {}x{} ({} pixels)", test_w, test_h, test_w * test_h));
 
-    // Test compute dispatch for Scene 0 (Waves) and Scene 1 (Mandelbulb)
+    // Test compute dispatch for Scene 0 (Waves) through Scene 6 (Kinematics)
     let mut preview_buf = vec![0u8; (prev_w * prev_h * 4) as usize];
     let mut verified_scenes = 0;
 
@@ -304,10 +332,34 @@ fn test_gpu_suite(preferred_gpu: Option<usize>) -> TestReport {
     }
 
     if verified_scenes == 7 {
-        details.push("All 7 GPU shader scenes (Waves, Mandelbulb, Black Hole, Tornado, Cardiac, LBM Vortex, Kinematics) compute & downsampling verified".to_string());
+        details.push("All 7 GPU shader scenes compute & VRAM downsampling verified".to_string());
     } else {
         passed = false;
         details.push(format!("Only {} of 7 GPU scenes produced valid render output", verified_scenes));
+    }
+
+    // Verify Out-of-Bounds and Out-of-Memory failsafes
+    let oob_zero = ComputePipelineManager::new(
+        std::sync::Arc::clone(&gpu_ctx.device),
+        std::sync::Arc::clone(&gpu_ctx.queue),
+        UNIFIED_SHADER,
+        0,
+        0,
+    );
+    let oom_huge = ComputePipelineManager::new(
+        std::sync::Arc::clone(&gpu_ctx.device),
+        std::sync::Arc::clone(&gpu_ctx.queue),
+        UNIFIED_SHADER,
+        65536,
+        65536,
+    );
+    let resize_oob = pipeline.try_resize(0, 0);
+
+    if oob_zero.is_err() && oom_huge.is_err() && resize_oob.is_err() {
+        details.push("Out-of-bounds (0x0) & out-of-memory pre-flight fail safes verified (0 crashes)".to_string());
+    } else {
+        passed = false;
+        details.push("Pre-flight OOB or OOM failsafe check failed to reject invalid request".to_string());
     }
 
     let duration = t0.elapsed();

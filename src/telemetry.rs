@@ -536,6 +536,86 @@ impl TelemetryCollector {
         None
     }
 
+    /// Queries the operating system for physical GPU VRAM stats (used_mb, total_mb).
+    /// Supports AMD DRM sysfs, Intel lmem sysfs, NVIDIA sysfs / procfs, and PCI BAR resources.
+    pub fn query_system_vram() -> Option<(u64, u64)> {
+        // 1. Check AMD sysfs mem_info_vram_total / used
+        for card_idx in 0..8 {
+            let path = format!("/sys/class/drm/card{}/device", card_idx);
+            let total_path = format!("{}/mem_info_vram_total", path);
+            let used_path = format!("{}/mem_info_vram_used", path);
+            if let Ok(total_bytes) = fs::read_to_string(&total_path).and_then(|s| {
+                s.trim()
+                    .parse::<u64>()
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            }) {
+                if total_bytes > 0 {
+                    let used_bytes = fs::read_to_string(&used_path)
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u64>().ok())
+                        .unwrap_or(0);
+                    return Some((used_bytes / (1024 * 1024), total_bytes / (1024 * 1024)));
+                }
+            }
+        }
+
+        // 2. Check Intel lmem_total_bytes / used
+        for card_idx in 0..8 {
+            let pattern = format!("/sys/class/drm/card{}/lmem_total_bytes", card_idx);
+            if let Ok(total_str) = fs::read_to_string(&pattern) {
+                if let Ok(total_bytes) = total_str.trim().parse::<u64>() {
+                    if total_bytes > 0 {
+                        let used_path = format!("/sys/class/drm/card{}/lmem_used_bytes", card_idx);
+                        let used_bytes = fs::read_to_string(&used_path)
+                            .ok()
+                            .and_then(|s| s.trim().parse::<u64>().ok())
+                            .unwrap_or(0);
+                        return Some((used_bytes / (1024 * 1024), total_bytes / (1024 * 1024)));
+                    }
+                }
+            }
+        }
+
+        // 3. Check NVIDIA procfs / sysfs
+        if let Ok(entries) = fs::read_dir("/proc/driver/nvidia/gpus") {
+            for entry in entries.flatten() {
+                let info_path = entry.path().join("information");
+                if let Ok(content) = fs::read_to_string(info_path) {
+                    for line in content.lines() {
+                        if line.contains("Total Memory:") || line.contains("FB Memory:") {
+                            if let Some(val_str) = line.split(':').nth(1) {
+                                let num_str = val_str
+                                    .replace("MiB", "")
+                                    .replace("MB", "")
+                                    .replace("KiB", "")
+                                    .replace("KB", "");
+                                if let Ok(mb) = num_str.trim().parse::<u64>() {
+                                    if mb > 0 {
+                                        return Some((0, mb));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Check PCI resource0 (BAR0 size for discrete GPUs)
+        for card_idx in 0..8 {
+            let res_path = format!("/sys/class/drm/card{}/device/resource0", card_idx);
+            if let Ok(meta) = fs::metadata(&res_path) {
+                let bytes = meta.len();
+                if bytes >= 256 * 1024 * 1024 {
+                    let mb = bytes / (1024 * 1024);
+                    return Some((0, mb));
+                }
+            }
+        }
+
+        None
+    }
+
     pub fn read_proc_stat() -> Option<(u64, u64)> {
         let contents = fs::read_to_string("/proc/stat").ok()?;
         let first_line = contents.lines().next()?;

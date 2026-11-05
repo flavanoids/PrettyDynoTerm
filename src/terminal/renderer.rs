@@ -44,6 +44,10 @@ impl TerminalRenderer {
         hud_lines_top: &[String],
         hud_lines_bottom: &[String],
     ) -> io::Result<()> {
+        if width == 0 || height == 0 || rgba.is_empty() {
+            return Ok(());
+        }
+
         self.output_buffer.clear();
         self.has_last_colors = false;
 
@@ -59,7 +63,10 @@ impl TerminalRenderer {
 
         // 2. Render Visual Canvas using Half-Blocks
         let char_rows = height / 2;
-        let stride = width * 4;
+        let stride = match width.checked_mul(4) {
+            Some(s) => s,
+            None => return Ok(()),
+        };
 
         for cy in 0..char_rows {
             let y_top = cy * 2;
@@ -72,13 +79,17 @@ impl TerminalRenderer {
                 let px_top_idx = row_top_offset + (x * 4);
                 let px_bot_idx = row_bot_offset + (x * 4);
 
-                let r_top = rgba[px_top_idx];
-                let g_top = rgba[px_top_idx + 1];
-                let b_top = rgba[px_top_idx + 2];
+                let (r_top, g_top, b_top) = if px_top_idx + 2 < rgba.len() {
+                    (rgba[px_top_idx], rgba[px_top_idx + 1], rgba[px_top_idx + 2])
+                } else {
+                    (0, 0, 0)
+                };
 
-                let r_bot = rgba[px_bot_idx];
-                let g_bot = rgba[px_bot_idx + 1];
-                let b_bot = rgba[px_bot_idx + 2];
+                let (r_bot, g_bot, b_bot) = if px_bot_idx + 2 < rgba.len() {
+                    (rgba[px_bot_idx], rgba[px_bot_idx + 1], rgba[px_bot_idx + 2])
+                } else {
+                    (0, 0, 0)
+                };
 
                 // Optimize escape sequences: only emit if colors changed
                 if !self.has_last_colors
@@ -132,8 +143,26 @@ pub fn downsample_rgba(
     dst_w: usize,
     dst_h: usize,
 ) {
+    if src_w == 0 || src_h == 0 || dst_w == 0 || dst_h == 0 {
+        return;
+    }
+
+    let src_min_len = match src_w.checked_mul(src_h).and_then(|wh| wh.checked_mul(4)) {
+        Some(l) => l,
+        None => return,
+    };
+    let dst_min_len = match dst_w.checked_mul(dst_h).and_then(|wh| wh.checked_mul(4)) {
+        Some(l) => l,
+        None => return,
+    };
+
+    if src.len() < src_min_len || dst.len() < dst_min_len {
+        return;
+    }
+
     if src_w == dst_w && src_h == dst_h {
-        dst.copy_from_slice(src);
+        let copy_len = src_min_len.min(dst.len());
+        dst[..copy_len].copy_from_slice(&src[..copy_len]);
         return;
     }
 
@@ -147,10 +176,12 @@ pub fn downsample_rgba(
             let src_idx = src_row + sx * 4;
             let dst_idx = dst_row + dx * 4;
 
-            dst[dst_idx] = src[src_idx];
-            dst[dst_idx + 1] = src[src_idx + 1];
-            dst[dst_idx + 2] = src[src_idx + 2];
-            dst[dst_idx + 3] = 255;
+            if src_idx + 3 < src.len() && dst_idx + 3 < dst.len() {
+                dst[dst_idx] = src[src_idx];
+                dst[dst_idx + 1] = src[src_idx + 1];
+                dst[dst_idx + 2] = src[src_idx + 2];
+                dst[dst_idx + 3] = 255;
+            }
         }
     }
 }
@@ -186,5 +217,28 @@ mod tests {
         assert_eq!(dst.len(), 8);
         assert_eq!(dst[3], 255);
         assert_eq!(dst[7], 255);
+    }
+
+    #[test]
+    fn test_downsample_rgba_zero_dimensions_fail_safe() {
+        let src = vec![1, 2, 3, 255];
+        let mut dst = vec![0u8; 4];
+        // 0 dimensions should not divide by zero or panic
+        downsample_rgba(&src, 0, 1, &mut dst, 1, 1);
+        downsample_rgba(&src, 1, 0, &mut dst, 1, 1);
+        downsample_rgba(&src, 1, 1, &mut dst, 0, 1);
+        downsample_rgba(&src, 1, 1, &mut dst, 1, 0);
+
+        // Small buffer should not panic
+        let mut small_dst = vec![0u8; 1];
+        downsample_rgba(&src, 1, 1, &mut small_dst, 1, 1);
+    }
+
+    #[test]
+    fn test_renderer_render_empty_or_zero_dimensions() {
+        let mut renderer = TerminalRenderer::new();
+        let buf = vec![0u8; 16];
+        assert!(renderer.render(&buf, 0, 0, &[], &[]).is_ok());
+        assert!(renderer.render(&[], 4, 4, &[], &[]).is_ok());
     }
 }

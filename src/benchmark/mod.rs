@@ -8,8 +8,8 @@ pub use consistency::{
     DEFAULT_CONSISTENCY_FILE,
 };
 pub use failsafe::{
-    format_emergency_box, format_emergency_line, print_emergency_thermal_box, ThermalFailsafe,
-    ThermalTripReport, VramHeadroomCheck,
+    format_emergency_box, format_emergency_line, print_emergency_thermal_box, GpuMemoryInfo,
+    ThermalFailsafe, ThermalTripReport, VramHeadroomCheck, VramTestTier,
 };
 pub use history::{
     append_to_history, compare_reports, format_comparison_table, format_history_table,

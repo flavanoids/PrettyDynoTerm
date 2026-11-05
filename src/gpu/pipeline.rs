@@ -54,6 +54,23 @@ impl ComputePipelineManager {
         width: u32,
         height: u32,
     ) -> Result<Self, String> {
+        Self::new_with_stats(device, queue, shader_src, width, height, None)
+    }
+
+    pub fn new_with_stats(
+        device: Arc<Device>,
+        queue: Arc<Queue>,
+        shader_src: &str,
+        width: u32,
+        height: u32,
+        stats: Option<&crate::telemetry::HardwareStats>,
+    ) -> Result<Self, String> {
+        // Pre-Flight VRAM & Buffer Limit Guard: validate against device limits and available VRAM headroom before buffer creation
+        let vram_check = crate::benchmark::failsafe::VramHeadroomCheck::evaluate(&device, width, height, stats)?;
+        if let Some(ref warn) = vram_check.warning {
+            eprintln!("\x1b[38;2;255;180;0;1m⚠ VRAM Headroom Warning:\x1b[0m {}", warn);
+        }
+
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("dyno_term_compute_shader"),
             source: ShaderSource::Wgsl(shader_src.into()),
@@ -65,12 +82,6 @@ impl ComputePipelineManager {
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-
-        // Pre-Flight VRAM & Buffer Limit Guard: validate against device limits before buffer creation
-        let vram_check = crate::benchmark::failsafe::VramHeadroomCheck::evaluate(&device, width, height, None)?;
-        if let Some(ref warn) = vram_check.warning {
-            eprintln!("\x1b[38;2;255;180;0;1m⚠ VRAM Headroom Warning:\x1b[0m {}", warn);
-        }
 
         let pixel_count = (width as u64) * (height as u64);
         let buffer_size = pixel_count.saturating_mul(4); // 4 bytes per pixel (RGBA8)
@@ -272,15 +283,26 @@ impl ComputePipelineManager {
     }
 
     pub fn update_preview_buffers(&mut self, dst_width: u32, dst_height: u32) {
-        let dst_width = dst_width.max(1);
-        let dst_height = dst_height.max(1);
+        let dst_width = dst_width.clamp(1, 16384);
+        let dst_height = dst_height.clamp(1, 16384);
         if self.preview_width == dst_width && self.preview_height == dst_height {
+            return;
+        }
+
+        let preview_size = match (dst_width as u64)
+            .checked_mul(dst_height as u64)
+            .and_then(|wh| wh.checked_mul(4))
+        {
+            Some(s) => s,
+            None => return,
+        };
+
+        if preview_size > self.device.limits().max_buffer_size {
             return;
         }
 
         self.preview_width = dst_width;
         self.preview_height = dst_height;
-        let preview_size = (dst_width * dst_height * 4) as u64;
 
         self.preview_storage_buffer = self.device.create_buffer(&BufferDescriptor {
             label: Some("Preview Storage Buffer"),
@@ -316,24 +338,29 @@ impl ComputePipelineManager {
         });
     }
 
-    #[allow(dead_code)]
-    pub fn resize(&mut self, new_width: u32, new_height: u32) {
+    /// Safely attempts to resize the compute pipeline, validating against VRAM and hardware limits.
+    /// Returns Ok(()) if successful, or Err if requested dimensions violate limits or exceed VRAM.
+    pub fn try_resize(&mut self, new_width: u32, new_height: u32) -> Result<(), String> {
         if self.width == new_width && self.height == new_height {
-            return;
+            return Ok(());
         }
 
-        self.width = new_width;
-        self.height = new_height;
-        let buffer_size = (new_width * new_height * 4) as u64;
+        // Validate new dimensions through pre-flight VRAM and OOB headroom guard
+        crate::benchmark::failsafe::VramHeadroomCheck::evaluate(&self.device, new_width, new_height, None)?;
 
-        self.storage_buffer = self.device.create_buffer(&BufferDescriptor {
+        let buffer_size = (new_width as u64)
+            .checked_mul(new_height as u64)
+            .and_then(|wh| wh.checked_mul(4))
+            .ok_or_else(|| "Integer overflow in buffer size calculation".to_string())?;
+
+        let new_storage_buffer = self.device.create_buffer(&BufferDescriptor {
             label: Some("Storage Buffer (Pixels)"),
             size: buffer_size,
             usage: BufferUsages::STORAGE | BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
-        self.staging_buffer = self.device.create_buffer(&BufferDescriptor {
+        let new_staging_buffer = self.device.create_buffer(&BufferDescriptor {
             label: Some("Staging Readback Buffer"),
             size: buffer_size,
             usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
@@ -341,7 +368,7 @@ impl ComputePipelineManager {
         });
 
         let bind_group_layout = self.pipeline.get_bind_group_layout(0);
-        self.bind_group = self.device.create_bind_group(&BindGroupDescriptor {
+        let new_bind_group = self.device.create_bind_group(&BindGroupDescriptor {
             label: Some("Compute Bind Group (Resized)"),
             layout: &bind_group_layout,
             entries: &[
@@ -351,13 +378,12 @@ impl ComputePipelineManager {
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: self.storage_buffer.as_entire_binding(),
+                    resource: new_storage_buffer.as_entire_binding(),
                 },
             ],
         });
 
-        // Reconnect downsample bind group with resized storage buffer
-        self.downsample_bind_group = self.device.create_bind_group(&BindGroupDescriptor {
+        let new_downsample_bind_group = self.device.create_bind_group(&BindGroupDescriptor {
             label: Some("Downsample Bind Group (Resized)"),
             layout: &self.downsample_bind_group_layout,
             entries: &[
@@ -367,7 +393,7 @@ impl ComputePipelineManager {
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: self.storage_buffer.as_entire_binding(),
+                    resource: new_storage_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 2,
@@ -375,6 +401,23 @@ impl ComputePipelineManager {
                 },
             ],
         });
+
+        // Commit newly allocated resources safely
+        self.width = new_width;
+        self.height = new_height;
+        self.storage_buffer = new_storage_buffer;
+        self.staging_buffer = new_staging_buffer;
+        self.bind_group = new_bind_group;
+        self.downsample_bind_group = new_downsample_bind_group;
+
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn resize(&mut self, new_width: u32, new_height: u32) {
+        if let Err(err) = self.try_resize(new_width, new_height) {
+            eprintln!("\x1b[38;2;255;100;100;1m⚠ Resize rejected by VRAM/OOB failsafe:\x1b[0m {}", err);
+        }
     }
 
     /// Renders frame on GPU, downsamples directly in VRAM to preview resolution,
@@ -386,6 +429,10 @@ impl ComputePipelineManager {
         dst_height: u32,
         dst_buf: &mut [u8],
     ) {
+        if dst_width == 0 || dst_height == 0 || dst_buf.is_empty() {
+            return;
+        }
+
         self.update_preview_buffers(dst_width, dst_height);
 
         self.queue

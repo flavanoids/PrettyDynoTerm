@@ -122,13 +122,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(p) => p,
         Err(err) => {
             eprintln!("\x1b[38;2;255;100;100;1m⚠ Resolution {}x{} exceeds hardware limits:\x1b[0m {}", compute_w, compute_h, err);
-            eprintln!("\x1b[38;2;0;255;200;1m▶ Falling back safely to 4K UHD (3840x2160) preset...\x1b[0m");
+            let (fb_w, fb_h) = dyno_term::benchmark::GpuMemoryInfo::detect(&device)
+                .recommend_resolution(dyno_term::benchmark::VramTestTier::Light);
+            eprintln!("\x1b[38;2;0;255;200;1m▶ Falling back safely to dynamically adapted {}x{} preset...\x1b[0m", fb_w, fb_h);
             let fallback_p = ComputePipelineManager::new(
                 Arc::clone(&device),
                 Arc::clone(&queue),
                 shaders::UNIFIED_SHADER,
-                3840,
-                2160,
+                fb_w,
+                fb_h,
             ).map_err(|e| format!("Failed to create fallback pipeline: {}", e))?;
             res_tag = format_resolution_tag(fallback_p.width, fallback_p.height);
             fallback_p
