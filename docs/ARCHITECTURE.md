@@ -84,7 +84,7 @@ To guarantee hardware stability and deterministic benchmark scoring across diver
      - **Benchmark Math & Scorer**: Tests frametime accumulation, 1% low calculations, arithmetic scene weighting, and JSON report round-tripping.
      - **Terminal Engine**: Tests resolution tags, ANSI sequence stripping, and half-block TrueColor rasterizer initialization.
 2. **Automated Developer Test Harness (`cargo test`)**:
-   - 66 automated unit and integration tests covering unit logic (`src/lib.rs`), CLI parsing (`tests/cli_tests.rs`), and GPU context execution (`tests/pipeline_integration.rs`).
+   - 67 automated unit and integration tests covering unit logic (`src/lib.rs`), CLI parsing (`tests/cli_tests.rs`), and GPU context execution (`tests/pipeline_integration.rs`).
    - Run in one step via `./scripts/run_tests.sh`.
 
 ---
@@ -124,6 +124,22 @@ src/
 ```
 
 By packaging session dependencies (`pipeline`, `renderer`, `telemetry`, `adapter_info`, `term_width`, `term_height`, `res_tag`) into `TerminalSession<'a>` and encapsulating workload settings into typed options (`DemoOptions`, `BenchmarkOptions`, `ConsistencyOptions`), runner functions maintain low cyclomatic complexity, clear boundaries, and strict compliance with zero-warning lint standards.
+
+---
+
+## 8. First-Principles Physics & Microarchitectural Memory Staging
+
+In accordance with modern GPU architecture design patterns:
+1. **Workgroup Shared Memory (LDS / `var<workgroup>`)**:
+   - `DOWNSAMPLE_SHADER` utilizes a $16 \times 16$ workgroup-shared tile cache (`var<workgroup> tile_cache: array<array<u32, 16>, 16>`) synchronized with `workgroupBarrier()`. This stages global memory reads cooperatively across all 256 invocations before writing preview pixels, testing Local Data Share bandwidth.
+2. **First-Principles Wave Dispersion & Spacetime Curvature**:
+   - Act I strictly follows the hydrodynamic gravity-capillary wave dispersion equation $\omega^2 = (g k + \frac{\gamma}{\rho} k^3) \tanh(k h)$.
+   - Act III implements Boyer-Lindquist Kerr horizon metrics ($\Sigma = r^2 + a^2 \cos^2\theta$) and curvature-adaptive step sizing ($\Delta t(r)$) to eliminate numerical event horizon leakage.
+   - Act IV models Poisson dry adiabatic potential temperature ($\theta = T_0 (P/P_0)^{0.286}$).
+   - Act V models myocardial electrical anisotropy with a $4:1$ conductivity tensor ratio ($\mathbf{D} = \sigma_t \mathbf{I} + (\sigma_l - \sigma_t)\vec{f}\vec{f}^T$).
+   - Act VIII executes 2nd-order Symplectic Leapfrog (Velocity Verlet) time integration on the CPU.
+3. **Explicit Silicon Metrics**:
+   - Benchmark scorecards and telemetry JSON logs report **Estimated TFLOPS**, **Effective VRAM Bandwidth (GB/s)**, and **Energy Efficiency (Joules per Mray)** directly.
 
 ---
 

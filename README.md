@@ -83,6 +83,17 @@ Hierarchical forward kinematics bipedal gait simulation evaluating 16-joint arti
 - **High-Performance 4K UHD Offscreen Compute**:
   - Defaults to computing at **3840×2160 (4K UHD)**—computing over **8.29 million pixels** per frame!
   - VRAM-native GPU compute downsampling to your terminal character grid using UTF-8 half-blocks (`▀`), providing extreme supersampling anti-aliasing (SSAA).
+- **First-Principles Scientific Physics & GPU Shared Memory (LDS) Tiling**:
+  - **Maritime Hydrodynamics (Act I)**: Full physical gravity-capillary wave dispersion ($\omega_i^2 = (gk_i + \frac{\gamma}{\rho} k_i^3)\tanh(k_i h)$) with water surface tension.
+  - **General Relativity (Act III)**: Boyer-Lindquist Kerr spacetime horizon metrics ($\Sigma = r^2 + a^2 \cos^2\theta$) and curvature-adaptive RK4 integration steps ($\Delta t(r)$).
+  - **Severe Storms (Act IV)**: Poisson dry adiabatic potential temperature ($\theta = T_0 (P/P_0)^{0.286}$) coupled to cyclostrophic pressure deficits and baroclinic updrafts.
+  - **Biomedical Cardiology (Act V)**: Aliev-Panfilov reaction-diffusion with an anisotropic myocardial conductivity tensor ($\mathbf{D} = \sigma_t \mathbf{I} + (\sigma_l - \sigma_t)\vec{f}\vec{f}^T$) at a realistic $4:1$ ratio.
+  - **GPU Microarchitecture Staging**: Workgroup-shared memory (LDS on AMD, Shared Memory on NVIDIA) cooperative tile caching (`var<workgroup> tile_cache`) with intra-workgroup barriers.
+  - **Celestial Astrophysics (Act VIII)**: Symplectic Leapfrog (Velocity Verlet) time integration preserving orbital energy and phase-space volume.
+- **Hardware Performance & Silicon Efficiency Metrics**:
+  - Real-time **Estimated TFLOPS** based on instruction counts across transcendental, ODE, and polynomial stages.
+  - **Effective VRAM Compute Bandwidth (GB/s)** tracking data movement across compute and downsample passes.
+  - **Energy Efficiency Index (Joules per Million Rays / Mray-Joules)** integrating telemetry board power draw.
 - **Dynamic VRAM Scaling & Headroom Safeguards (4GB to 200GB+ VRAM)**:
   - Dynamically inspects host GPU memory limits, physical device VRAM, and active allocation state.
   - Dynamically calculates tier targets (`Light`, `Balanced`, `Stress`, `MaxSafe`) scaling intelligently from 4GB/8GB consumer GPUs up to 80GB/200GB+ datacenter accelerators (e.g. NVIDIA H100/H200, AMD MI300X) without crashing or running out of memory.

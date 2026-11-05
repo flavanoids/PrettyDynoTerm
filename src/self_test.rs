@@ -622,6 +622,9 @@ fn test_benchmark_suite() -> TestReport {
         peak_gpu_clock_mhz: 2500,
         peak_vram_mb: 4096,
         scene_results: vec![res],
+        estimated_tflops: 14.82,
+        effective_bandwidth_gbps: 382.4,
+        energy_joules_per_mray: 4.12,
         gpu_telemetry: None,
         telemetry_samples: vec![],
     };

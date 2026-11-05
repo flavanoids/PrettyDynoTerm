@@ -492,7 +492,13 @@ impl Hud {
                 format!("{highlight}[{p_bar}]")
             };
 
-            let l2 = if c3_w >= 18 {
+            let l2 = if c3_w >= 26 {
+                let est_tflops = self.rays_per_sec * 2.25;
+                format!(
+                    "{label_color}Rays: {val_color}{:>4.1}G {border_color}│ {val_color}{:>4.1}TF",
+                    self.rays_per_sec, est_tflops
+                )
+            } else if c3_w >= 18 {
                 format!(
                     "{label_color}Rays: {val_color}{:>5.2} Giga/s",
                     self.rays_per_sec
@@ -526,7 +532,13 @@ impl Hud {
                 format!("{label_color}T: {val_color}{:02}:{:02}", mins, secs)
             };
 
-            let l2 = if c3_w >= 18 {
+            let l2 = if c3_w >= 26 {
+                let est_tflops = self.rays_per_sec * 2.25;
+                format!(
+                    "{label_color}Rays: {val_color}{:>4.1}G {border_color}│ {val_color}{:>4.1}TF",
+                    self.rays_per_sec, est_tflops
+                )
+            } else if c3_w >= 18 {
                 format!(
                     "{label_color}Rays: {val_color}{:>5.2} Giga/s",
                     self.rays_per_sec

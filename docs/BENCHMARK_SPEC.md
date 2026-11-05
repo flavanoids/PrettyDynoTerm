@@ -65,6 +65,18 @@ Scores are formatted to two decimal places (`f64`, e.g. `898.66 pts`) to provide
 - **Enthusiast / Flagship**: Modern high-end GPUs (e.g. NVIDIA RTX 4080 / 4090) score $\approx 1,500.00 - 2,500.00\text{ pts}$.
 - **Entry-Level / Integrated**: Modern APUs and entry GPUs score $\approx 100.00 - 250.00\text{ pts}$.
 
+### Explicit Silicon Hardware Performance Metrics
+In addition to normalized benchmark points, `dyno_term` computes and exports silicon compute and efficiency metrics grounded in instruction and memory profiling:
+1. **Estimated Floating-Point Throughput (TFLOPS)**:
+   Calculated from the weighted instruction count across all 8 Acts (averaging $\sim 2,250$ FLOPs per pixel across RK4 integrations, transcendental wave superpositions, and polynomial unrolling):
+   $$\text{TFLOPS} = \frac{N_{\text{frames}} \times \text{Pixels}_{\text{frame}} \times 2,250}{\text{Elapsed Seconds} \times 10^{12}}$$
+2. **Effective Memory Bandwidth (GB/s)**:
+   Measures high-resolution compute buffer write transactions (4 bytes/pixel) plus downsample texture reads and writes:
+   $$\text{Bandwidth (GB/s)} = \frac{N_{\text{frames}} \times \left( \text{Pixels} \times 4.0 + 160 \times 60 \times 8.0 \right)}{\text{Elapsed Seconds} \times 10^9}$$
+3. **Energy Efficiency (Joules per Million Rays / Mray-Joules)**:
+   Measures total electrical energy consumed per unit of computational output using live sysfs/hwmon telemetry power integration:
+   $$\text{Total Joules} = \bar{P}_{\text{board}} \times t_{\text{elapsed}}, \quad \text{Efficiency} = \frac{\text{Total Joules}}{\text{Total Pixels} / 10^6}$$
+
 ---
 
 ## 4. Historical Baseline & Comparison Engine

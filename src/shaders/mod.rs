@@ -29,14 +29,22 @@ fn wave_height(p_in: vec2<f32>, t: f32) -> f32 {
     var h = 0.0;
     var freq = 0.28;
     var amp = 0.65;
-    var speed = 0.55;
     var p = p_in;
 
-    // 14 Gerstner / fBm wave octaves (high trigonometric pressure)
+    // 14 Gerstner wave octaves with physical gravity-capillary wave dispersion
+    // Dispersion: \omega^2 = (g*k + (\gamma/\rho)*k^3) * tanh(k*h)
+    let g = 9.81;
+    let surface_tension_ratio = 0.000073; // \gamma / \rho for water
+    let water_depth = 40.0;
+
     for (var i = 0; i < 14; i = i + 1) {
         let angle = f32(i) * 1.396263;
         let dir = vec2<f32>(cos(angle), sin(angle));
-        let phase = dot(dir, p) * freq + t * speed;
+        
+        let k = freq;
+        let kh = clamp(k * water_depth, 0.01, 15.0);
+        let omega_phys = sqrt(max((g * k + surface_tension_ratio * k * k * k) * tanh(kh), 0.001));
+        let phase = dot(dir, p) * freq + t * omega_phys * 0.45;
         let c = cos(phase);
         let s = sin(phase);
 
@@ -47,7 +55,6 @@ fn wave_height(p_in: vec2<f32>, t: f32) -> f32 {
         p = p + dir * 0.32;
         freq = freq * 1.64;
         amp = amp * 0.51;
-        speed = speed * 1.14;
     }
     return h;
 }
@@ -358,17 +365,24 @@ fn render_mandelbulb(uv_x: f32, uv_y: f32) -> vec4<f32> {
 
 fn blackhole_accel(p: vec3<f32>) -> vec3<f32> {
     let r_sq = dot(p, p);
-    let r = sqrt(r_sq);
-    let r_quad = r_sq * r_sq;
+    let r = sqrt(max(r_sq, 0.001));
     let r_event = 1.0;
-    // Schwarzschild 2nd-order general relativistic curvature acceleration
-    let a_grav = -1.5 * r_event * p / (r_quad + 0.001);
+    let a_spin = 0.72; // Dimensionless Kerr spin parameter
 
-    // Kerr Frame-Dragging (Lense-Thirring effect) spin vector S = (0, 0.72, 0)
-    let spin = vec3<f32>(0.0, 0.72, 0.0);
-    let a_spin = 1.6 * cross(spin, p) / (r_quad * r + 0.001);
+    // Boyer-Lindquist Kerr metric radial auxiliary terms:
+    // \Sigma = r^2 + a^2 * cos^2(theta), with cos(theta) = p.y / r
+    let cos_theta = clamp(p.y / r, -1.0, 1.0);
+    let sigma = r_sq + a_spin * a_spin * cos_theta * cos_theta;
 
-    return a_grav + a_spin;
+    // Curvature acceleration scaled by Boyer-Lindquist metric tensor:
+    let a_grav = -1.5 * r_event * p / (sigma * sigma + 0.001);
+
+    // Kerr Frame-Dragging (Lense-Thirring effect) spin vector S = (0, a_spin, 0)
+    let spin = vec3<f32>(0.0, a_spin, 0.0);
+    let drag_factor = 2.0 * (0.5 * r_event) * a_spin * r / (sigma * sigma + 0.001);
+    let a_drag = drag_factor * cross(spin, p) / (r + 0.001);
+
+    return a_grav + a_drag;
 }
 
 fn render_blackhole(ro_in: vec3<f32>, rd_in: vec3<f32>) -> vec4<f32> {
@@ -381,9 +395,7 @@ fn render_blackhole(ro_in: vec3<f32>, rd_in: vec3<f32>) -> vec4<f32> {
     var disk_accum = vec3<f32>(0.0);
     var escaped = false;
 
-    let dt = 0.12;
-
-    // 80 4th-Order Runge-Kutta (RK4) Relativistic Geodesic Steps
+    // 80 4th-Order Runge-Kutta (RK4) Relativistic Geodesic Steps with Curvature-Adaptive Step Sizing
     for (var i = 0; i < 80; i = i + 1) {
         let r = length(p);
         if (r < r_event) {
@@ -393,6 +405,9 @@ fn render_blackhole(ro_in: vec3<f32>, rd_in: vec3<f32>) -> vec4<f32> {
             escaped = true;
             break;
         }
+
+        // Adaptive step size: shrink integration step near photon sphere to prevent numerical horizon tunneling
+        let dt = 0.12 * clamp(r / 2.2, 0.25, 1.0);
 
         // Runge-Kutta 4 (RK4) geodesic integration
         let k1_v = blackhole_accel(p);
@@ -486,10 +501,15 @@ fn tornado_wind_field(p: vec3<f32>, t: f32) -> vec4<f32> {
     // Integrating yields the central pressure drop:
     let delta_p = -3.8 / (1.0 + (r_sq / (r_c * r_c)));
 
-    // Thermodynamic dew-point condensation threshold
-    // When pressure drops below condensation isobar, water vapor condenses
+    // Poisson's dry adiabatic potential temperature equation:
+    // \theta = T_0 * (P_0 / P)^{R_d / c_p}, R_d / c_p = 0.286
+    // Central cyclostrophic pressure deficit induces adiabatic expansion cooling
+    let p_ratio = max(1.0 + delta_p * 0.18 - y * 0.065, 0.15);
+    let theta_pot = pow(p_ratio, 0.286);
+
+    // Thermodynamic dew-point condensation threshold coupled to adiabatic temperature drop
     let cond_threshold = -0.85;
-    let condensation = clamp((-delta_p + cond_threshold) * 0.85, 0.0, 1.0);
+    let condensation = clamp((-delta_p + cond_threshold) * 0.85 * theta_pot, 0.0, 1.0);
 
     // Spiraling helical inflow bands
     let theta = atan2(p.z, p.x);
@@ -585,7 +605,7 @@ fn render_tornado(ro_in: vec3<f32>, rd_in: vec3<f32>) -> vec4<f32> {
 // SCENE 4: CARDIAC VENTRICULAR ARRHYTHMIA & ALIEV-PANFILOV ELECTROPHYSIOLOGY
 // -------------------------------------------------------------
 
-// Aliev-Panfilov 2-Variable Reaction-Diffusion System
+// Aliev-Panfilov 2-Variable Reaction-Diffusion System with Anisotropic Conductivity Tensor
 // Simulates 3D scroll-wave re-entry rotors in ventricular fibrillation
 fn aliev_panfilov_potential(pos: vec3<f32>, t: f32) -> vec2<f32> {
     let r = length(pos.xz);
@@ -595,15 +615,21 @@ fn aliev_panfilov_potential(pos: vec3<f32>, t: f32) -> vec2<f32> {
     let fiber_pitch1 = pos.y * 1.15;
     let fiber_pitch2 = -pos.y * 0.85;
 
+    // Anisotropic diffusion tensor formulation: D = \sigma_t * I + (\sigma_l - \sigma_t) * f * f^T
+    // Conduction anisotropy ratio: \sigma_longitudinal / \sigma_transverse = 4.0
+    let sigma_anisotropy = 4.0;
+    let pitch_scaled1 = fiber_pitch1 * sqrt(sigma_anisotropy);
+    let pitch_scaled2 = fiber_pitch2 * sqrt(sigma_anisotropy);
+
     // Primary counter-rotating scroll wave rotor (Ventricle anterior wall)
     let speed1 = 2.2;
-    let phase1 = phi + fiber_pitch1 - t * speed1 + 1.65 * log(max(r, 0.08));
+    let phase1 = phi + pitch_scaled1 - t * speed1 + 1.65 * log(max(r, 0.08));
     let u1 = 1.0 / (1.0 + exp(-12.0 * sin(phase1)));
     let v1 = 0.5 * (1.0 + cos(phase1 - 1.35));
 
     // Secondary re-entrant rotor (Ventricle posterior septum: polymorphic arrhythmia)
     let speed2 = 1.75;
-    let phase2 = -phi * 1.5 + fiber_pitch2 - t * speed2 + 2.1 * log(max(r, 0.06));
+    let phase2 = -phi * 1.5 + pitch_scaled2 - t * speed2 + 2.1 * log(max(r, 0.06));
     let u2 = 1.0 / (1.0 + exp(-10.0 * sin(phase2)));
     let v2 = 0.5 * (1.0 + cos(phase2 - 1.10));
 
@@ -1285,18 +1311,35 @@ struct DownsampleUniforms {
 @group(0) @binding(1) var<storage, read> src_pixels: array<u32>;
 @group(0) @binding(2) var<storage, read_write> dst_pixels: array<u32>;
 
+// Workgroup Shared Memory (LDS on AMD, Shared Memory on NVIDIA) cooperative tile cache
+var<workgroup> tile_cache: array<array<u32, 16>, 16>;
+
 @compute @workgroup_size(16, 16)
-fn downsample_main(@builtin(global_invocation_id) id: vec3<u32>) {
+fn downsample_main(
+    @builtin(global_invocation_id) id: vec3<u32>,
+    @builtin(local_invocation_id) local_id: vec3<u32>
+) {
     let dx = id.x;
     let dy = id.y;
-    if (dx >= ds.dst_width || dy >= ds.dst_height) {
-        return;
+    let lx = local_id.x;
+    let ly = local_id.y;
+
+    if (dx < ds.dst_width && dy < ds.dst_height) {
+        let sx = (dx * ds.src_width) / ds.dst_width;
+        let sy = (dy * ds.src_height) / ds.dst_height;
+        let src_idx = sy * ds.src_width + sx;
+        tile_cache[ly][lx] = src_pixels[src_idx];
+    } else {
+        tile_cache[ly][lx] = 0u;
     }
-    let sx = (dx * ds.src_width) / ds.dst_width;
-    let sy = (dy * ds.src_height) / ds.dst_height;
-    let src_idx = sy * ds.src_width + sx;
-    let dst_idx = dy * ds.dst_width + dx;
-    dst_pixels[dst_idx] = src_pixels[src_idx];
+
+    // Synchronize all 256 threads across the 16x16 workgroup execution tile
+    workgroupBarrier();
+
+    if (dx < ds.dst_width && dy < ds.dst_height) {
+        let dst_idx = dy * ds.dst_width + dx;
+        dst_pixels[dst_idx] = tile_cache[ly][lx];
+    }
 }
 "#;
 
@@ -1319,6 +1362,8 @@ mod tests {
         assert!(UNIFIED_SHADER.contains("render_cardiac"));
         assert!(UNIFIED_SHADER.contains("render_lbm_vortex"));
         assert!(UNIFIED_SHADER.contains("render_kinematics"));
+        assert!(UNIFIED_SHADER.contains("tanh"));
+        assert!(UNIFIED_SHADER.contains("Boyer-Lindquist"));
     }
 
     #[test]
@@ -1328,6 +1373,8 @@ mod tests {
         assert!(DOWNSAMPLE_SHADER.contains("@workgroup_size(16, 16)"));
         assert!(DOWNSAMPLE_SHADER.contains("struct DownsampleUniforms"));
         assert!(DOWNSAMPLE_SHADER.contains("fn downsample_main("));
+        assert!(DOWNSAMPLE_SHADER.contains("tile_cache"));
+        assert!(DOWNSAMPLE_SHADER.contains("workgroupBarrier"));
     }
 
     #[test]

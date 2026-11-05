@@ -85,7 +85,7 @@ When `-t, --test` is provided, `dyno_term` runs in non-interactive stdout mode, 
 
 ## 3. Automated Developer Test Suite (`cargo test`)
 
-The automated test suite contains **66 tests** spanning unit, integration, and CLI domains:
+The automated test suite contains **67 tests** spanning unit, integration, and CLI domains:
 
 ```bash
 cargo test --all-targets -- --nocapture
@@ -95,7 +95,7 @@ cargo test --all-targets -- --nocapture
 
 | Target | Module | Test Count | Description |
 | :--- | :--- | :--- | :--- |
-| `src/lib.rs` | `benchmark::tests` | 7 | Empty result handling, peak tracking, frametime & 1% low percentiles, scene weighting formulas, JSON report round-trip, report file writing, history and baseline workflow. |
+| `src/lib.rs` | `benchmark::tests` | 8 | Empty result handling, peak tracking, frametime & 1% low percentiles, scene weighting formulas, JSON report round-trip, report file writing, history and baseline workflow, TFLOPS, bandwidth & energy metric calculation. |
 | `src/lib.rs` | `benchmark::consistency::tests` | 4 | StatSummary calculations (mean, standard deviation, variance, range, CV%), empty stat protection, consistency rating thresholds, JSON round-trip save/load, and ANSI scorecard generation. |
 | `src/lib.rs` | `benchmark::telemetry::tests` | 4 | SensorMetric min/max/avg/p95 calculations, empty metric fallbacks, automated GPU sensor assessment (thermal delta, headroom, fan PWM, power cap), and thermal throttling heuristic detection. |
 | `src/lib.rs` | `benchmark::failsafe::tests` | 8 | Thermal failsafe tripwire, fan stall breach, hotspot breach, edge breach, normal temps, crit margin, VRAM headroom OOB/OOM check, and 8GB & 200GB dynamic VRAM adaptation scaling. |

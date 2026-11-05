@@ -192,6 +192,13 @@ pub fn execute_benchmark_pass(
 
     let stats = session.telemetry.sample(&session.adapter_info.name);
     let assessment = scorer.generate_telemetry_assessment(&stats);
+    let (tflops, bandwidth_gbps, energy_eff) = BenchmarkScorer::compute_hardware_metrics(
+        opts.frames_per_scene * 8,
+        compute_pixels,
+        total_elapsed,
+        stats.gpu_power_w,
+    );
+
     let report = BenchmarkReport {
         timestamp: {
             let secs = SystemTime::now()
@@ -217,6 +224,9 @@ pub fn execute_benchmark_pass(
         peak_gpu_clock_mhz: scorer.peak_clock.max(stats.peak_gpu_clock_mhz),
         peak_vram_mb: scorer.peak_vram,
         scene_results,
+        estimated_tflops: tflops,
+        effective_bandwidth_gbps: bandwidth_gbps,
+        energy_joules_per_mray: energy_eff,
         gpu_telemetry: Some(assessment),
         telemetry_samples: scorer.snapshots.clone(),
     };
@@ -333,6 +343,17 @@ pub fn print_scorecard(report: &BenchmarkReport, output_path: &str, resolution: 
         "\x1b[38;2;140;150;170m│ {}{}\x1b[38;2;0;220;255m│",
         peak_str,
         " ".repeat(pad_len)
+    );
+    let hw_metrics_str = format!(
+        "Compute: \x1b[38;2;0;255;200;1m{:.2} TFLOPS\x1b[38;2;140;150;170m │ Bandwidth: \x1b[38;2;0;255;200;1m{:.1} GB/s\x1b[38;2;140;150;170m │ Energy: \x1b[38;2;255;180;0;1m{:.2} J/Mray\x1b[38;2;140;150;170m",
+        report.estimated_tflops, report.effective_bandwidth_gbps, report.energy_joules_per_mray,
+    );
+    let vis_len_hw = visible_len(&hw_metrics_str);
+    let pad_len_hw = 72usize.saturating_sub(vis_len_hw);
+    println!(
+        "\x1b[38;2;140;150;170m│ {}{}\x1b[38;2;0;220;255m│",
+        hw_metrics_str,
+        " ".repeat(pad_len_hw)
     );
     if let Some(ref assessment) = report.gpu_telemetry {
         print!("{}", format_gpu_assessment_box(assessment));

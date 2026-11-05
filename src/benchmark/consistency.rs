@@ -515,6 +515,9 @@ mod tests {
             peak_gpu_clock_mhz: 2700,
             peak_vram_mb: 4000,
             scene_results: vec![scene1.clone()],
+            estimated_tflops: 15.0,
+            effective_bandwidth_gbps: 400.0,
+            energy_joules_per_mray: 3.5,
             gpu_telemetry: None,
             telemetry_samples: vec![],
         };

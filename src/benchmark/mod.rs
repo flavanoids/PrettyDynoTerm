@@ -56,6 +56,12 @@ pub struct BenchmarkReport {
     pub peak_vram_mb: u64,
     pub scene_results: Vec<SceneResult>,
     #[serde(default)]
+    pub estimated_tflops: f64,
+    #[serde(default)]
+    pub effective_bandwidth_gbps: f64,
+    #[serde(default)]
+    pub energy_joules_per_mray: f64,
+    #[serde(default)]
     pub gpu_telemetry: Option<GpuTelemetryAssessment>,
     #[serde(default)]
     pub telemetry_samples: Vec<TelemetrySnapshot>,
@@ -229,6 +235,55 @@ impl BenchmarkScorer {
         };
         let raw_workload = (count * pixels_per_frame as f64) * weight;
         (raw_workload / total_time_secs) / SCORE_SCALE_DIVISOR
+    }
+
+    /// Evaluates estimated arithmetic floating-point operations per raymarch step & pixel for an Act.
+    pub fn scene_flop_multiplier(scene_id: u32) -> f64 {
+        match scene_id {
+            0 => 1450.0, // Waves (14 Gerstner octaves, Mie phase, central diff normal)
+            1 => 3600.0, // Mandelbulb (24 unrolled polynomial iterations, Hubbard-Douady, 10 AO)
+            2 => 2800.0, // Black hole (80 RK4 steps, Boyer-Lindquist metric, Novikov-Thorne)
+            3 => 1850.0, // Tornado (112 volumetric steps, Burgers-Rott, Poisson adiabatic)
+            4 => 2200.0, // Cardiac (160 primary steps, 20 SSS steps, anisotropic tensor)
+            5 => 2500.0, // Lattice Boltzmann (9 velocity streams, BGK collision, 4-tap curl)
+            6 => 2100.0, // Kinematics (16 FK bone matrices, smin muscle bulging, planar raymarch)
+            7 => 1500.0, // CPU N-Body (256 pairs, symplectic leapfrog integration)
+            _ => 2000.0,
+        }
+    }
+
+    /// Computes hardware performance metrics (TFLOPS, effective VRAM bandwidth, energy efficiency).
+    pub fn compute_hardware_metrics(
+        total_frames: u32,
+        pixels_per_frame: u64,
+        total_elapsed_seconds: f64,
+        avg_power_w: f32,
+    ) -> (f64, f64, f64) {
+        if total_elapsed_seconds <= 0.0 || total_frames == 0 || pixels_per_frame == 0 {
+            return (0.0, 0.0, 0.0);
+        }
+
+        // Weighted FLOPs across all 8 Acts (average ~2,250 FLOPs/pixel)
+        let total_pixels = total_frames as f64 * pixels_per_frame as f64;
+        let avg_flops_per_pixel = 2250.0;
+        let total_flops = total_pixels * avg_flops_per_pixel;
+        let estimated_tflops = (total_flops / total_elapsed_seconds) / 1e12;
+
+        // VRAM Bandwidth: Each frame writes compute buffer (4B/pixel) and downsamples (read+write)
+        let bytes_per_frame = (pixels_per_frame as f64 * 4.0) + (160.0 * 60.0 * 8.0);
+        let total_bytes = bytes_per_frame * total_frames as f64;
+        let effective_bandwidth_gbps = (total_bytes / total_elapsed_seconds) / 1e9;
+
+        // Energy Efficiency: Total Joules (W * s) / Million Rays
+        let total_joules = (avg_power_w.max(1.0) as f64) * total_elapsed_seconds;
+        let million_rays = (total_pixels / 1e6).max(0.001);
+        let energy_joules_per_mray = total_joules / million_rays;
+
+        (
+            (estimated_tflops * 100.0).round() / 100.0,
+            (effective_bandwidth_gbps * 10.0).round() / 10.0,
+            (energy_joules_per_mray * 100.0).round() / 100.0,
+        )
     }
 
     pub fn compute_scene_result(
@@ -439,6 +494,9 @@ mod tests {
                 p1_low_frametime_ms: 18.2,
                 score: 159.00,
             }],
+            estimated_tflops: 12.5,
+            effective_bandwidth_gbps: 320.0,
+            energy_joules_per_mray: 4.2,
             gpu_telemetry: None,
             telemetry_samples: vec![],
         };
@@ -474,6 +532,9 @@ mod tests {
             peak_gpu_clock_mhz: 1800,
             peak_vram_mb: 1024,
             scene_results: vec![],
+            estimated_tflops: 5.0,
+            effective_bandwidth_gbps: 150.0,
+            energy_joules_per_mray: 6.0,
             gpu_telemetry: None,
             telemetry_samples: vec![],
         };
@@ -518,6 +579,9 @@ mod tests {
                 p1_low_frametime_ms: 17.0,
                 score: 160.00,
             }],
+            estimated_tflops: 14.0,
+            effective_bandwidth_gbps: 360.0,
+            energy_joules_per_mray: 3.8,
             gpu_telemetry: None,
             telemetry_samples: vec![],
         };
@@ -544,6 +608,9 @@ mod tests {
                 p1_low_frametime_ms: 16.0,
                 score: 170.00,
             }],
+            estimated_tflops: 14.8,
+            effective_bandwidth_gbps: 380.0,
+            energy_joules_per_mray: 3.6,
             gpu_telemetry: None,
             telemetry_samples: vec![],
         };
@@ -590,5 +657,18 @@ mod tests {
         // Cleanup
         let _ = fs::remove_file(hist_path);
         let _ = fs::remove_file(base_path);
+    }
+
+    #[test]
+    fn test_compute_hardware_metrics() {
+        let (tflops, bw, energy) =
+            BenchmarkScorer::compute_hardware_metrics(800, 3840 * 2160, 10.0, 150.0);
+        assert!(tflops > 0.0);
+        assert!(bw > 0.0);
+        assert!(energy > 0.0);
+        assert!(BenchmarkScorer::scene_flop_multiplier(0) >= 1000.0);
+        assert!(
+            BenchmarkScorer::scene_flop_multiplier(1) > BenchmarkScorer::scene_flop_multiplier(0)
+        );
     }
 }

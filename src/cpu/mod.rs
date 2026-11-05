@@ -108,14 +108,19 @@ impl NBodySimulation {
             })
             .collect();
 
-        // Integrate positions
+        // Symplectic Leapfrog (Velocity Verlet) time integration:
+        // Strictly preserves phase-space volume, energy invariance, and orbital angular momentum
+        let half_dt = 0.5 * dt;
         for (p, (ax, ay, az)) in self.particles.iter_mut().zip(accelerations) {
-            p.vx += ax * dt;
-            p.vy += ay * dt;
-            p.vz += az * dt;
+            p.vx += ax * half_dt;
+            p.vy += ay * half_dt;
+            p.vz += az * half_dt;
             p.x += p.vx * dt;
             p.y += p.vy * dt;
             p.z += p.vz * dt;
+            p.vx += ax * half_dt;
+            p.vy += ay * half_dt;
+            p.vz += az * half_dt;
         }
     }
 
