@@ -20,7 +20,6 @@ pub fn execute_benchmark_pass(
 ) -> Result<BenchmarkPassResult, Box<dyn std::error::Error>> {
     let mut failsafe = ThermalFailsafe::new(opts.max_temp_c, opts.failsafe_enabled);
     let mut scorer = BenchmarkScorer::new();
-    let mut scene_results = Vec::new();
     let total_benchmark_start = Instant::now();
     let compute_pixels = (session.pipeline.width * session.pipeline.height) as u64;
     let total_bench_frames = (opts.frames_per_scene * 8).max(1);
@@ -34,7 +33,27 @@ pub fn execute_benchmark_pass(
         session.pipeline.height as usize,
     );
 
-    for scene_id in 0..8u32 {
+    let duration_limit = opts.duration_secs.map(Duration::from_secs);
+    let mut accumulated_scenes: std::collections::BTreeMap<u32, crate::benchmark::SceneResult> =
+        std::collections::BTreeMap::new();
+    let mut scene_cycle = 0u32;
+
+    loop {
+        if crate::signal::is_termination_requested() {
+            return Ok(BenchmarkPassResult::Cancelled);
+        }
+
+        if let Some(limit) = duration_limit {
+            if total_benchmark_start.elapsed() >= limit && !accumulated_scenes.is_empty() {
+                break;
+            }
+        } else if scene_cycle >= 8 {
+            break;
+        }
+
+        let scene_id = scene_cycle % 8;
+        scene_cycle += 1;
+
         let mut hud = Hud::new(
             session.term_width,
             SCENE_NAMES[scene_id as usize].to_string(),
@@ -50,11 +69,19 @@ pub fn execute_benchmark_pass(
         let scene_start = Instant::now();
         let mut last_terminal_draw = Instant::now();
         let mut last_progress_emit = Instant::now();
+        let mut frames_in_this_pass = 0u32;
 
         for frame_idx in 0..opts.frames_per_scene {
             // Check for process termination signal (SIGINT / SIGTERM)
             if crate::signal::is_termination_requested() {
                 return Ok(BenchmarkPassResult::Cancelled);
+            }
+
+            if let Some(limit) = duration_limit
+                && total_benchmark_start.elapsed() >= limit
+                && (frames_in_this_pass > 0 || !accumulated_scenes.is_empty())
+            {
+                break;
             }
 
             // Check for exit abort key or HUD toggle (interactive mode only)
@@ -80,6 +107,7 @@ pub fn execute_benchmark_pass(
             let frame_start = Instant::now();
             let elapsed = scene_start.elapsed().as_secs_f32();
             total_frames_completed += 1;
+            frames_in_this_pass += 1;
 
             // Decoupled 60 FPS Terminal preview (only drawn when not headless)
             let should_draw_terminal = !session.is_headless()
@@ -253,15 +281,38 @@ pub fn execute_benchmark_pass(
             }
         }
 
-        let scene_result =
-            scorer.compute_scene_result(scene_id, SCENE_NAMES[scene_id as usize], compute_pixels);
-        let stats_end = session.telemetry.sample(&session.adapter_info.name);
-        scorer.record_telemetry_snapshot(scene_id, &stats_end, true);
+        if frames_in_this_pass > 0 {
+            let scene_result = scorer.compute_scene_result(
+                scene_id,
+                SCENE_NAMES[scene_id as usize],
+                compute_pixels,
+            );
+            let stats_end = session.telemetry.sample(&session.adapter_info.name);
+            scorer.record_telemetry_snapshot(scene_id, &stats_end, true);
 
-        cumulative_score += scene_result.score;
-        scene_results.push(scene_result);
+            cumulative_score += scene_result.score;
+            accumulated_scenes
+                .entry(scene_id)
+                .and_modify(|existing| {
+                    existing.frames_rendered += scene_result.frames_rendered;
+                    existing.elapsed_seconds += scene_result.elapsed_seconds;
+                    if existing.elapsed_seconds > 0.0 {
+                        existing.avg_fps =
+                            existing.frames_rendered as f64 / existing.elapsed_seconds;
+                        existing.avg_frametime_ms =
+                            (existing.elapsed_seconds / existing.frames_rendered as f64) * 1000.0;
+                    }
+                    existing.p1_low_frametime_ms = existing
+                        .p1_low_frametime_ms
+                        .max(scene_result.p1_low_frametime_ms);
+                    existing.score += scene_result.score;
+                })
+                .or_insert(scene_result);
+        }
     }
 
+    let scene_results: Vec<crate::benchmark::SceneResult> =
+        accumulated_scenes.into_values().collect();
     let total_elapsed = total_benchmark_start.elapsed().as_secs_f64();
     let total_score: f64 =
         ((scene_results.iter().map(|s| s.score).sum::<f64>()) * 100.0).round() / 100.0;
@@ -269,7 +320,7 @@ pub fn execute_benchmark_pass(
     let stats = session.telemetry.sample(&session.adapter_info.name);
     let assessment = scorer.generate_telemetry_assessment(&stats);
     let (tflops, bandwidth_gbps, energy_eff) = BenchmarkScorer::compute_hardware_metrics(
-        opts.frames_per_scene * 8,
+        total_frames_completed,
         compute_pixels,
         total_elapsed,
         stats.gpu_power_w,
@@ -292,7 +343,7 @@ pub fn execute_benchmark_pass(
         },
         preset: session.res_tag.to_string(),
         total_elapsed_seconds: total_elapsed,
-        total_frames: opts.frames_per_scene * 8,
+        total_frames: total_frames_completed,
         overall_score: total_score,
         peak_gpu_temp_c: scorer.peak_temp,
         peak_gpu_hotspot_c: scorer.peak_hotspot,
@@ -343,6 +394,7 @@ pub fn run_benchmark(
 
     let pass_opts = BenchmarkPassOptions {
         frames_per_scene: opts.frames_per_scene,
+        duration_secs: opts.duration_secs,
         iteration_info: None,
         max_temp_c: opts.max_temp_c,
         failsafe_enabled: opts.failsafe_enabled,

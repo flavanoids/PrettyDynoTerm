@@ -194,6 +194,7 @@ pub fn run_consistency_suite(
 
         let pass_opts = BenchmarkPassOptions {
             frames_per_scene: opts.frames_per_scene,
+            duration_secs: None,
             iteration_info: Some((i, iterations)),
             max_temp_c: opts.max_temp_c,
             failsafe_enabled: opts.failsafe_enabled,

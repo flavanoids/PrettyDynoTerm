@@ -11,7 +11,7 @@ PrettyDynoTerm (`dyno_term`) supports three output modes via the `--output` CLI 
 
 ## 1. Exit Codes
 
-DynoTerm returns standardized Linux exit codes to integrate cleanly into workflow supervisors (such as systemd and Project Senna):
+DynoTerm returns standardized Linux exit codes to integrate cleanly into workflow supervisors (such as systemd, job runners, and cluster orchestrators):
 
 | Exit Code | Identifier | Description |
 | :---: | :--- | :--- |

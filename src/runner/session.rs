@@ -42,6 +42,7 @@ pub struct DemoOptions {
 #[derive(Debug, Clone)]
 pub struct BenchmarkPassOptions {
     pub frames_per_scene: u32,
+    pub duration_secs: Option<u64>,
     pub iteration_info: Option<(usize, usize)>,
     pub max_temp_c: f32,
     pub failsafe_enabled: bool,
@@ -50,6 +51,7 @@ pub struct BenchmarkPassOptions {
 #[derive(Debug, Clone)]
 pub struct BenchmarkOptions {
     pub frames_per_scene: u32,
+    pub duration_secs: Option<u64>,
     pub report_file: Option<String>,
     pub max_temp_c: f32,
     pub failsafe_enabled: bool,

@@ -21,6 +21,7 @@ use crate::telemetry::{PciBusId, TelemetryCollector};
 pub struct MultiGpuBenchmarkOptions {
     pub selected_gpus: Vec<usize>,
     pub frames_per_scene: u32,
+    pub duration_secs: Option<u64>,
     pub compute_width: u32,
     pub compute_height: u32,
     pub res_tag: String,
@@ -402,16 +403,45 @@ fn run_worker_thread(
     // 3. Coordinate start with peer workers
     barrier.wait();
     let run_start = Instant::now();
-    let mut scene_results = Vec::new();
+    let mut accumulated_scenes: std::collections::BTreeMap<u32, crate::benchmark::SceneResult> =
+        std::collections::BTreeMap::new();
+    let duration_limit = opts.duration_secs.map(Duration::from_secs);
+    let mut total_rendered_frames: u32 = 0;
+    let mut scene_cycle = 0u32;
 
-    for scene_id in 0..8u32 {
-        barrier.wait();
+    loop {
+        if signal::is_termination_requested() {
+            return WorkerOutcome::Cancelled;
+        }
+
+        if let Some(limit) = duration_limit {
+            if run_start.elapsed() >= limit && !accumulated_scenes.is_empty() {
+                break;
+            }
+        } else if scene_cycle >= 8 {
+            break;
+        }
+
+        if opts.duration_secs.is_none() {
+            barrier.wait();
+        }
+
+        let scene_id = scene_cycle % 8;
+        scene_cycle += 1;
+
         let scene_start = Instant::now();
         let mut last_progress_emit = Instant::now();
+        let mut frames_completed_in_pass = 0u32;
 
         for frame_idx in 0..opts.frames_per_scene {
             if signal::is_termination_requested() {
                 return WorkerOutcome::Cancelled;
+            }
+            if let Some(limit) = duration_limit
+                && run_start.elapsed() >= limit
+                && (frames_completed_in_pass > 0 || !accumulated_scenes.is_empty())
+            {
+                break;
             }
 
             let frame_start = Instant::now();
@@ -444,6 +474,8 @@ fn run_worker_thread(
                 }
 
                 scorer.record_frame_with_stats(frame_dur, scene_id, &stats);
+                frames_completed_in_pass += 1;
+                total_rendered_frames += 1;
 
                 // Stream jsonl progress
                 if output_emitter.format().is_jsonl()
@@ -490,6 +522,8 @@ fn run_worker_thread(
                 }
 
                 scorer.record_frame_with_stats(frame_dur, scene_id, &stats);
+                frames_completed_in_pass += 1;
+                total_rendered_frames += 1;
 
                 if output_emitter.format().is_jsonl()
                     && (last_progress_emit.elapsed() >= Duration::from_secs(1)
@@ -527,13 +561,37 @@ fn run_worker_thread(
             }
         }
 
-        let scene_result =
-            scorer.compute_scene_result(scene_id, SCENE_NAMES[scene_id as usize], compute_pixels);
-        let stats_end = telemetry.sample_or_default(&pci_id, &gpu_name);
-        scorer.record_telemetry_snapshot(scene_id, &stats_end, true);
-        scene_results.push(scene_result);
+        if frames_completed_in_pass > 0 {
+            let scene_result = scorer.compute_scene_result(
+                scene_id,
+                SCENE_NAMES[scene_id as usize],
+                compute_pixels,
+            );
+            let stats_end = telemetry.sample_or_default(&pci_id, &gpu_name);
+            scorer.record_telemetry_snapshot(scene_id, &stats_end, true);
+
+            accumulated_scenes
+                .entry(scene_id)
+                .and_modify(|existing| {
+                    existing.frames_rendered += scene_result.frames_rendered;
+                    existing.elapsed_seconds += scene_result.elapsed_seconds;
+                    if existing.elapsed_seconds > 0.0 {
+                        existing.avg_fps =
+                            existing.frames_rendered as f64 / existing.elapsed_seconds;
+                        existing.avg_frametime_ms =
+                            (existing.elapsed_seconds / existing.frames_rendered as f64) * 1000.0;
+                    }
+                    existing.p1_low_frametime_ms = existing
+                        .p1_low_frametime_ms
+                        .max(scene_result.p1_low_frametime_ms);
+                    existing.score += scene_result.score;
+                })
+                .or_insert(scene_result);
+        }
     }
 
+    let scene_results: Vec<crate::benchmark::SceneResult> =
+        accumulated_scenes.into_values().collect();
     let duration_s = run_start.elapsed().as_secs_f64();
     let total_score: f64 =
         ((scene_results.iter().map(|s| s.score).sum::<f64>()) * 100.0).round() / 100.0;
@@ -541,7 +599,7 @@ fn run_worker_thread(
     let stats = telemetry.sample_or_default(&pci_id, &gpu_name);
     let assessment = scorer.generate_telemetry_assessment(&stats);
     let (tflops, bandwidth_gbps, energy_eff) = BenchmarkScorer::compute_hardware_metrics(
-        opts.frames_per_scene * 8,
+        total_rendered_frames,
         compute_pixels,
         duration_s,
         stats.gpu_power_w,
@@ -564,7 +622,7 @@ fn run_worker_thread(
         },
         preset: opts.res_tag.clone(),
         total_elapsed_seconds: duration_s,
-        total_frames: opts.frames_per_scene * 8,
+        total_frames: total_rendered_frames,
         overall_score: total_score,
         peak_gpu_temp_c: scorer.peak_temp,
         peak_gpu_hotspot_c: scorer.peak_hotspot,

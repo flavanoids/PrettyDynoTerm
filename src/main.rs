@@ -25,6 +25,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = Args::parse();
 
+    if args.version {
+        if args.output.is_json() || args.output.is_jsonl() {
+            let meta = dyno_term::output::VersionMetadata::current();
+            println!("{}", serde_json::to_string_pretty(&meta)?);
+        } else {
+            println!("dyno_term {}", env!("CARGO_PKG_VERSION"));
+        }
+        ExitCode::Ok.exit();
+    }
+
     if args.test_internal_error {
         ExitCode::InternalError.exit();
     }
@@ -251,6 +261,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             55.0
         };
 
+    let resolved_report_file = if let Some(ref dir) = args.report_dir {
+        std::fs::create_dir_all(dir)?;
+        Some(format!(
+            "{}/dyno_benchmark_results.json",
+            dir.trim_end_matches('/')
+        ))
+    } else {
+        args.report_file.clone()
+    };
+
     // Fast-path: Multi-GPU Benchmark execution (spawns dedicated worker threads per GPU)
     if run_benchmark_mode {
         let telemetry = Arc::new(TelemetryCollector::new(
@@ -259,13 +279,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let multi_opts = dyno_term::runner::MultiGpuBenchmarkOptions {
             selected_gpus,
             frames_per_scene: benchmark_frames,
+            duration_secs: args.duration,
             compute_width: compute_w,
             compute_height: compute_h,
             res_tag: res_tag.clone(),
             is_datacenter_preset,
             max_temp_c: safe_max_temp,
             failsafe_enabled: !args.no_failsafe,
-            report_file: args.report_file.clone(),
+            report_file: resolved_report_file.clone(),
         };
         let code = dyno_term::runner::run_multi_gpu_benchmark(
             &multi_opts,
@@ -426,7 +447,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     };
                     let opts = BenchmarkOptions {
                         frames_per_scene: config.frames_per_scene,
-                        report_file: Some(config.output_path.clone()),
+                        duration_secs: args.duration,
+                        report_file: resolved_report_file
+                            .clone()
+                            .or_else(|| Some(config.output_path.clone())),
                         max_temp_c: config.max_temp_c,
                         failsafe_enabled: config.failsafe_enabled,
                     };
@@ -569,7 +593,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             max_temp_c: safe_max_temp,
             failsafe_enabled: !args.no_failsafe,
             frames_per_scene: args.frames,
-            report_file: args.report_file.clone(),
+            report_file: resolved_report_file.clone(),
         };
         run_consistency_suite(&mut session, &opts)?;
         ExitCode::Ok.exit();

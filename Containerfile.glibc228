@@ -1,0 +1,13 @@
+FROM rockylinux:8
+
+# Install GCC, make, git, and glibc-devel for building C/Rust projects
+RUN dnf install -y --setopt=install_weak_deps=False \
+    gcc \
+    gcc-c++ \
+    make \
+    git \
+    glibc-devel \
+    && dnf clean all
+
+WORKDIR /workspace
+CMD ["cargo", "build", "--release"]

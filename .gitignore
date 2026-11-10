@@ -1,4 +1,5 @@
 /target
+/dyno_term
 dyno_benchmark_results*.json
 dyno_consistency_results*.json
 dyno_benchmark_history*.jsonl

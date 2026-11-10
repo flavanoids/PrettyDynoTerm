@@ -6,9 +6,13 @@ use clap::Parser;
 #[command(
     name = "dyno_term",
     about = "Cross-platform terminal GPU/CPU benchmark & artistic demoparty renderer",
-    version = "1.0.0"
+    disable_version_flag = true
 )]
 pub struct Args {
+    /// Print version information (supports --output json for embedding metadata)
+    #[arg(short = 'V', long = "version", action = clap::ArgAction::SetTrue)]
+    pub version: bool,
+
     /// Open the interactive CLI launcher menu (default when no mode flag is passed)
     #[arg(short, long)]
     pub menu: bool,
@@ -24,6 +28,14 @@ pub struct Args {
     /// Optional path to save benchmark JSON report file
     #[arg(long)]
     pub report_file: Option<String>,
+
+    /// Optional directory to save output reports (leaves CWD read-only and untouched)
+    #[arg(long)]
+    pub report_dir: Option<String>,
+
+    /// Duration in seconds to run benchmark continuously repeating scenes (alternative to fixed frames)
+    #[arg(long)]
+    pub duration: Option<u64>,
 
     /// Internal test flag: trigger intentional internal error (exit code 5)
     #[arg(long, hide = true)]
@@ -162,6 +174,40 @@ pub fn parse_gpu_selection(
 
     let trimmed = gpus_str.trim();
     if trimmed.eq_ignore_ascii_case("all") {
+        // Honour CUDA_VISIBLE_DEVICES or HIP_VISIBLE_DEVICES if set in the environment
+        if let Ok(vis) =
+            std::env::var("CUDA_VISIBLE_DEVICES").or_else(|_| std::env::var("HIP_VISIBLE_DEVICES"))
+        {
+            let vis_trimmed = vis.trim();
+            if !vis_trimmed.is_empty() {
+                let mut env_indices = Vec::new();
+                for part in vis_trimmed.split(',') {
+                    let p = part.trim();
+                    if p.is_empty() {
+                        continue;
+                    }
+                    if let Ok(idx) = p.parse::<usize>()
+                        && idx < total_available
+                        && !env_indices.contains(&idx)
+                    {
+                        env_indices.push(idx);
+                    }
+                }
+                if !env_indices.is_empty() {
+                    return Ok(env_indices);
+                } else {
+                    return Err(
+                        "No compatible GPU adapter found matching CUDA_VISIBLE_DEVICES/HIP_VISIBLE_DEVICES"
+                            .to_string(),
+                    );
+                }
+            } else {
+                return Err(
+                    "CUDA_VISIBLE_DEVICES/HIP_VISIBLE_DEVICES is empty, masking all GPUs"
+                        .to_string(),
+                );
+            }
+        }
         return Ok((0..total_available).collect());
     }
 

@@ -347,6 +347,36 @@ impl SummaryRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddedKernelChecksums {
+    pub cuda_ptx_sm90_sha256: String,
+    pub hip_co_gfx_sha256: String,
+    pub wgsl_shader_sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VersionMetadata {
+    pub version: String,
+    pub git_commit: String,
+    pub embedded_kernels: EmbeddedKernelChecksums,
+    pub supported_backends: Vec<String>,
+}
+
+impl VersionMetadata {
+    pub fn current() -> Self {
+        Self {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            git_commit: env!("GIT_COMMIT_HASH").to_string(),
+            embedded_kernels: EmbeddedKernelChecksums {
+                cuda_ptx_sm90_sha256: env!("CUDA_PTX_SHA256").to_string(),
+                hip_co_gfx_sha256: env!("HIP_CO_SHA256").to_string(),
+                wgsl_shader_sha256: env!("WGSL_SHADER_SHA256").to_string(),
+            },
+            supported_backends: vec!["wgpu".to_string(), "cuda".to_string(), "hip".to_string()],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorRecord {
     pub schema_version: String,
     #[serde(rename = "type")]
