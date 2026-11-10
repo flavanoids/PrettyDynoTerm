@@ -505,6 +505,7 @@ mod tests {
         let run1 = BenchmarkReport {
             timestamp: "UTC_Epoch_1001".to_string(),
             system_info: sys.clone(),
+            preset: "standard".to_string(),
             total_elapsed_seconds: 10.0,
             total_frames: 700,
             overall_score: 1000.00,

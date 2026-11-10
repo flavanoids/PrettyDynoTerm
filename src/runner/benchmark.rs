@@ -290,6 +290,7 @@ pub fn execute_benchmark_pass(
             cpu_name: stats.cpu_name,
             cpu_threads: stats.cpu_threads,
         },
+        preset: session.res_tag.to_string(),
         total_elapsed_seconds: total_elapsed,
         total_frames: opts.frames_per_scene * 8,
         overall_score: total_score,

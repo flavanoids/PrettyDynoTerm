@@ -280,6 +280,8 @@ pub struct SummaryRecord {
     pub record_type: String,
     pub timestamp: String,
     pub status: String,
+    #[serde(default)]
+    pub preset: String,
     pub overall_score: f64,
     pub elapsed_seconds: f64,
     pub total_gpus: usize,
@@ -289,8 +291,9 @@ pub struct SummaryRecord {
 }
 
 impl SummaryRecord {
-    pub fn new(
+    pub fn new_with_preset(
         status: &str,
+        preset: &str,
         overall_score: f64,
         elapsed_seconds: f64,
         total_gpus: usize,
@@ -302,6 +305,7 @@ impl SummaryRecord {
             record_type: "summary".to_string(),
             timestamp: current_iso_timestamp(),
             status: status.to_string(),
+            preset: preset.to_string(),
             overall_score,
             elapsed_seconds,
             total_gpus,
@@ -310,9 +314,29 @@ impl SummaryRecord {
         }
     }
 
-    pub fn single(status: &str, overall_score: f64, elapsed_seconds: f64, exit_code: i32) -> Self {
-        Self::new(
+    pub fn new(
+        status: &str,
+        overall_score: f64,
+        elapsed_seconds: f64,
+        total_gpus: usize,
+        outlier_gpus: Vec<usize>,
+        exit_code: i32,
+    ) -> Self {
+        Self::new_with_preset(
             status,
+            "standard",
+            overall_score,
+            elapsed_seconds,
+            total_gpus,
+            outlier_gpus,
+            exit_code,
+        )
+    }
+
+    pub fn single(status: &str, overall_score: f64, elapsed_seconds: f64, exit_code: i32) -> Self {
+        Self::new_with_preset(
+            status,
+            "standard",
             overall_score,
             elapsed_seconds,
             1,
@@ -366,6 +390,36 @@ impl CancelledRecord {
             reason: reason.to_string(),
             elapsed_seconds,
             exit_code: ExitCode::Cancelled.as_i32(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThermalTripRecord {
+    pub schema_version: String,
+    #[serde(rename = "type")]
+    pub record_type: String,
+    pub timestamp: String,
+    pub gpu: usize,
+    pub sensor: String,
+    pub value: f32,
+    pub ceiling: f32,
+    pub critical: f32,
+    pub exit_code: i32,
+}
+
+impl ThermalTripRecord {
+    pub fn new(gpu: usize, sensor: &str, value: f32, ceiling: f32, critical: f32) -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION.to_string(),
+            record_type: "thermal_trip".to_string(),
+            timestamp: current_iso_timestamp(),
+            gpu,
+            sensor: sensor.to_string(),
+            value,
+            ceiling,
+            critical,
+            exit_code: ExitCode::WorkloadFailure.as_i32(),
         }
     }
 }
@@ -437,6 +491,34 @@ impl OutputEmitter {
                 eprintln!(
                     "\n\x1b[38;2;255;180;0;1m⚠ Execution cancelled: {} (elapsed: {:.2}s)\x1b[0m",
                     reason, elapsed_seconds
+                );
+            }
+        }
+    }
+
+    pub fn emit_thermal_trip(
+        &self,
+        gpu: usize,
+        sensor: &str,
+        value: f32,
+        ceiling: f32,
+        critical: f32,
+    ) {
+        match self.format {
+            OutputFormat::Jsonl => {
+                let rec = ThermalTripRecord::new(gpu, sensor, value, ceiling, critical);
+                self.emit_jsonl(&rec);
+            }
+            OutputFormat::Json => {
+                let rec = ThermalTripRecord::new(gpu, sensor, value, ceiling, critical);
+                if let Ok(json) = serde_json::to_string_pretty(&rec) {
+                    println!("{}", json);
+                }
+            }
+            OutputFormat::Human => {
+                eprintln!(
+                    "\x1b[38;2;255;60;60;1m[FAILSAFE] Emergency Thermal Trip on GPU {}: {} sensor reached {:.1}°C, exceeding safety ceiling {:.1}°C (crit {:.1}°C)\x1b[0m",
+                    gpu, sensor, value, ceiling, critical
                 );
             }
         }

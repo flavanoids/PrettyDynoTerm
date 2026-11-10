@@ -8,6 +8,11 @@ pub struct ThermalFailsafe {
     pub enabled: bool,
     pub max_hotspot_c: f32,
     pub max_edge_c: f32,
+    pub max_mem_c: f32,
+    pub is_datacenter_preset: bool,
+    pub gpu_index: usize,
+    pub consecutive_trips: u32,
+    pub trip_threshold_samples: u32,
     pub fan_stall_threshold_c: f32,
     pub fan_stall_consecutive_frames: u32,
 }
@@ -15,6 +20,7 @@ pub struct ThermalFailsafe {
 /// Report produced when an emergency thermal tripwire triggers.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThermalTripReport {
+    pub gpu_index: usize,
     pub sensor_type: String,
     pub current_temp_c: f32,
     pub ceiling_temp_c: f32,
@@ -45,33 +51,62 @@ impl ThermalFailsafe {
             enabled,
             max_hotspot_c: safe_hotspot_c,
             max_edge_c: safe_edge_c,
+            max_mem_c: 90.0,
+            is_datacenter_preset: false,
+            gpu_index: 0,
+            consecutive_trips: 0,
+            trip_threshold_samples: 3,
             fan_stall_threshold_c: 78.0,
             fan_stall_consecutive_frames: 0,
         }
     }
 
+    pub fn with_gpu_index(mut self, gpu_index: usize) -> Self {
+        self.gpu_index = gpu_index;
+        self
+    }
+
+    pub fn with_datacenter_preset(mut self, is_datacenter_preset: bool) -> Self {
+        self.is_datacenter_preset = is_datacenter_preset;
+        self
+    }
+
     /// Evaluates current hardware stats against critical safety ceilings.
+    /// Requires 3 consecutive samples over the ceiling before tripping (debouncing).
     /// Returns Some(ThermalTripReport) if an emergency cutoff is required.
     pub fn check(&mut self, stats: &HardwareStats) -> Option<ThermalTripReport> {
         if !self.enabled {
             return None;
         }
 
-        // 1. Silicon Junction / Hotspot Ceiling Check
-        // Trigger if hotspot reaches user ceiling (default 105°C) or within 2.0°C of VBIOS crit limit.
-        let hotspot_limit =
+        let mut breach_candidate = None;
+
+        // 1. Silicon Junction / Hotspot Ceiling Check:
+        // Ceiling = min(max_temp_c, sensor_critical - 5 °C).
+        // NVIDIA uses NVML slowdown threshold - 5 °C.
+        let mut hotspot_limit =
             if stats.gpu_hotspot_crit_c.is_finite() && stats.gpu_hotspot_crit_c > 0.0 {
-                (stats.gpu_hotspot_crit_c - 2.0).min(self.max_hotspot_c)
+                (stats.gpu_hotspot_crit_c - 5.0).min(self.max_hotspot_c)
             } else {
                 self.max_hotspot_c
             };
+        if let Some(slowdown) = stats.nvml_slowdown_temp_c
+            && slowdown.is_finite()
+            && slowdown > 0.0
+        {
+            hotspot_limit = hotspot_limit.min(slowdown - 5.0);
+        }
+        if self.is_datacenter_preset {
+            hotspot_limit = hotspot_limit.min(95.0);
+        }
 
         if stats.gpu_hotspot_c.is_finite()
             && stats.gpu_hotspot_c > 0.0
             && stats.gpu_hotspot_c >= hotspot_limit
         {
-            return Some(ThermalTripReport {
-                sensor_type: "GPU Silicon Junction (Hotspot)".to_string(),
+            breach_candidate = Some(ThermalTripReport {
+                gpu_index: self.gpu_index,
+                sensor_type: "junction".to_string(),
                 current_temp_c: stats.gpu_hotspot_c,
                 ceiling_temp_c: hotspot_limit,
                 crit_limit_c: stats.gpu_hotspot_crit_c,
@@ -82,29 +117,77 @@ impl ThermalFailsafe {
             });
         }
 
-        // 2. GPU Edge / Package Temperature Ceiling Check
-        // Trigger if edge temp reaches 95°C or within 3.0°C of VBIOS crit limit.
-        let edge_limit = if stats.gpu_temp_crit_c.is_finite() && stats.gpu_temp_crit_c > 0.0 {
-            (stats.gpu_temp_crit_c - 3.0).min(self.max_edge_c)
-        } else {
-            self.max_edge_c
-        };
+        // 2. HBM / Memory Temperature Ceiling Check
+        if breach_candidate.is_none() {
+            let mut mem_limit =
+                if stats.gpu_mem_temp_crit_c.is_finite() && stats.gpu_mem_temp_crit_c > 0.0 {
+                    (stats.gpu_mem_temp_crit_c - 5.0).min(self.max_mem_c)
+                } else {
+                    self.max_mem_c
+                };
+            if self.is_datacenter_preset {
+                mem_limit = mem_limit.min(90.0);
+            }
 
-        if stats.gpu_temp_c.is_finite() && stats.gpu_temp_c > 0.0 && stats.gpu_temp_c >= edge_limit
-        {
-            return Some(ThermalTripReport {
-                sensor_type: "GPU Package / Edge".to_string(),
-                current_temp_c: stats.gpu_temp_c,
-                ceiling_temp_c: edge_limit,
-                crit_limit_c: stats.gpu_temp_crit_c,
-                message: format!(
-                    "GPU edge temperature reached {:.1}°C, exceeding safety ceiling of {:.1}°C (Hardware Crit: {:.1}°C)",
-                    stats.gpu_temp_c, edge_limit, stats.gpu_temp_crit_c
-                ),
-            });
+            if stats.gpu_mem_temp_c.is_finite()
+                && stats.gpu_mem_temp_c > 0.0
+                && stats.gpu_mem_temp_c >= mem_limit
+            {
+                breach_candidate = Some(ThermalTripReport {
+                    gpu_index: self.gpu_index,
+                    sensor_type: "memory".to_string(),
+                    current_temp_c: stats.gpu_mem_temp_c,
+                    ceiling_temp_c: mem_limit,
+                    crit_limit_c: stats.gpu_mem_temp_crit_c,
+                    message: format!(
+                        "HBM/VRAM memory temperature reached {:.1}°C, exceeding safety ceiling of {:.1}°C (Hardware Crit: {:.1}°C)",
+                        stats.gpu_mem_temp_c, mem_limit, stats.gpu_mem_temp_crit_c
+                    ),
+                });
+            }
         }
 
-        // 3. Cooling Fan Stall Detection Under Load (Active Fan Cards Only)
+        // 3. GPU Edge / Package Temperature Ceiling Check (Secondary Check)
+        if breach_candidate.is_none() {
+            let mut edge_limit = if stats.gpu_temp_crit_c.is_finite() && stats.gpu_temp_crit_c > 0.0
+            {
+                (stats.gpu_temp_crit_c - 5.0).min(self.max_edge_c)
+            } else {
+                self.max_edge_c
+            };
+            if self.is_datacenter_preset {
+                edge_limit = edge_limit.min(88.0);
+            }
+
+            if stats.gpu_temp_c.is_finite()
+                && stats.gpu_temp_c > 0.0
+                && stats.gpu_temp_c >= edge_limit
+            {
+                breach_candidate = Some(ThermalTripReport {
+                    gpu_index: self.gpu_index,
+                    sensor_type: "edge".to_string(),
+                    current_temp_c: stats.gpu_temp_c,
+                    ceiling_temp_c: edge_limit,
+                    crit_limit_c: stats.gpu_temp_crit_c,
+                    message: format!(
+                        "GPU edge temperature reached {:.1}°C, exceeding safety ceiling of {:.1}°C (Hardware Crit: {:.1}°C)",
+                        stats.gpu_temp_c, edge_limit, stats.gpu_temp_crit_c
+                    ),
+                });
+            }
+        }
+
+        // Debounce: require 3 consecutive samples over the ceiling before tripping
+        if let Some(candidate) = breach_candidate {
+            self.consecutive_trips += 1;
+            if self.consecutive_trips >= self.trip_threshold_samples {
+                return Some(candidate);
+            }
+        } else {
+            self.consecutive_trips = 0;
+        }
+
+        // 4. Cooling Fan Stall Detection Under Load (Active Fan Cards Only)
         // Passively cooled boards (H200, H100, MI100, MI50) have no fan sensors: skip completely.
         if let (Some(rpm), Some(pwm)) = (stats.gpu_fan_rpm, stats.gpu_fan_pwm) {
             if stats.gpu_temp_c >= self.fan_stall_threshold_c && rpm == 0 && pwm > 50 {
@@ -112,7 +195,8 @@ impl ThermalFailsafe {
                 // 20 consecutive frames of zero RPM under heavy heat indicates fan failure/deadlock
                 if self.fan_stall_consecutive_frames >= 20 {
                     return Some(ThermalTripReport {
-                        sensor_type: "Cooling Fan Tachometer".to_string(),
+                        gpu_index: self.gpu_index,
+                        sensor_type: "fan".to_string(),
                         current_temp_c: stats.gpu_temp_c,
                         ceiling_temp_c: self.fan_stall_threshold_c,
                         crit_limit_c: 0.0,
@@ -529,10 +613,14 @@ mod tests {
             ..Default::default()
         };
 
+        // Samples 1 & 2 debounced
+        assert_eq!(failsafe.check(&stats), None);
+        assert_eq!(failsafe.check(&stats), None);
+        // Sample 3 trips
         let trip = failsafe
             .check(&stats)
-            .expect("Should trip on hotspot breach");
-        assert_eq!(trip.sensor_type, "GPU Silicon Junction (Hotspot)");
+            .expect("Should trip on 3rd sample of hotspot breach");
+        assert_eq!(trip.sensor_type, "junction");
         assert_eq!(trip.current_temp_c, 106.5);
     }
 
@@ -541,14 +629,20 @@ mod tests {
         let mut failsafe = ThermalFailsafe::new(105.0, true);
         let stats = HardwareStats {
             gpu_temp_c: 96.0,
-            gpu_hotspot_c: 98.0,
+            gpu_hotspot_c: 80.0,
             gpu_temp_crit_c: 100.0,
             gpu_hotspot_crit_c: 110.0,
             ..Default::default()
         };
 
-        let trip = failsafe.check(&stats).expect("Should trip on edge breach");
-        assert_eq!(trip.sensor_type, "GPU Package / Edge");
+        // Samples 1 & 2 debounced
+        assert_eq!(failsafe.check(&stats), None);
+        assert_eq!(failsafe.check(&stats), None);
+        // Sample 3 trips
+        let trip = failsafe
+            .check(&stats)
+            .expect("Should trip on 3rd sample of edge breach");
+        assert_eq!(trip.sensor_type, "edge");
         assert_eq!(trip.current_temp_c, 96.0);
     }
 
@@ -563,6 +657,8 @@ mod tests {
             gpu_hotspot_c: 106.0,
             ..Default::default()
         };
+        assert_eq!(failsafe.check(&stats), None);
+        assert_eq!(failsafe.check(&stats), None);
         let trip = failsafe
             .check(&stats)
             .expect("Should trip on default 105.0 ceiling even with initial NaN");
@@ -572,7 +668,7 @@ mod tests {
     #[test]
     fn test_thermal_failsafe_crit_margin() {
         let mut failsafe = ThermalFailsafe::new(105.0, true);
-        // If VBIOS crit is 98.0°C, 98 - 2.0 = 96.0°C limit
+        // If VBIOS crit is 98.0°C, 98 - 5.0 = 93.0°C limit
         let stats = HardwareStats {
             gpu_temp_c: 82.0,
             gpu_hotspot_c: 96.5,
@@ -580,10 +676,12 @@ mod tests {
             ..Default::default()
         };
 
+        assert_eq!(failsafe.check(&stats), None);
+        assert_eq!(failsafe.check(&stats), None);
         let trip = failsafe
             .check(&stats)
             .expect("Should trip on proximity to crit limit");
-        assert_eq!(trip.ceiling_temp_c, 96.0);
+        assert_eq!(trip.ceiling_temp_c, 93.0);
     }
 
     #[test]
@@ -603,7 +701,7 @@ mod tests {
         }
 
         let trip = failsafe.check(&stats).expect("Should trip on fan stall");
-        assert_eq!(trip.sensor_type, "Cooling Fan Tachometer");
+        assert_eq!(trip.sensor_type, "fan");
     }
 
     #[test]
@@ -641,6 +739,7 @@ mod tests {
     #[test]
     fn test_emergency_box_line_widths() {
         let trip = ThermalTripReport {
+            gpu_index: 0,
             sensor_type: "GPU Silicon Junction (Hotspot)".to_string(),
             current_temp_c: 106.5,
             ceiling_temp_c: 105.0,

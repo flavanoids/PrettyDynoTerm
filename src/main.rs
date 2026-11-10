@@ -208,8 +208,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let term_pixel_height = char_height * 2;
 
     // Canonical internal compute resolution
-    let (compute_w, compute_h) = parse_resolution(&args.res, term_width, term_pixel_height);
+    let (mut compute_w, mut compute_h) = parse_resolution(&args.res, term_width, term_pixel_height);
     let mut res_tag = format_resolution_tag(compute_w, compute_h);
+    let mut is_datacenter_preset = false;
+    let mut benchmark_frames = args.frames;
+
+    if let Some(ref preset) = args.preset {
+        match preset.to_lowercase().as_str() {
+            "datacenter" => {
+                compute_w = 15360;
+                compute_h = 8640;
+                res_tag = "datacenter".to_string();
+                is_datacenter_preset = true;
+                // Size so MI50 takes 60-90s: default 15 frames per scene (120 total)
+                if args.frames == 100 {
+                    benchmark_frames = 15;
+                }
+            }
+            other => {
+                output_emitter.emit_error(
+                    "InvalidArgs",
+                    &format!(
+                        "Unknown preset '{}'. Supported presets: 'datacenter'",
+                        other
+                    ),
+                    ExitCode::InvalidArgs,
+                );
+                ExitCode::InvalidArgs.exit();
+            }
+        }
+    }
 
     let safe_max_temp = if args.max_temp.is_finite() && args.max_temp > 0.0 {
         args.max_temp
@@ -230,10 +258,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
         let multi_opts = dyno_term::runner::MultiGpuBenchmarkOptions {
             selected_gpus,
-            frames_per_scene: args.frames,
+            frames_per_scene: benchmark_frames,
             compute_width: compute_w,
             compute_height: compute_h,
             res_tag: res_tag.clone(),
+            is_datacenter_preset,
             max_temp_c: safe_max_temp,
             failsafe_enabled: !args.no_failsafe,
             report_file: args.report_file.clone(),

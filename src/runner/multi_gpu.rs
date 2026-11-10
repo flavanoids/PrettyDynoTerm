@@ -24,6 +24,7 @@ pub struct MultiGpuBenchmarkOptions {
     pub compute_width: u32,
     pub compute_height: u32,
     pub res_tag: String,
+    pub is_datacenter_preset: bool,
     pub max_temp_c: f32,
     pub failsafe_enabled: bool,
     pub report_file: Option<String>,
@@ -169,11 +170,18 @@ pub fn run_multi_gpu_benchmark(
 
     // Check thermal tripwire
     if let Some(trip) = trip_error {
+        output_emitter.emit_thermal_trip(
+            trip.gpu_index,
+            &trip.sensor_type,
+            trip.current_temp_c,
+            trip.ceiling_temp_c,
+            trip.crit_limit_c,
+        );
         let msg = format!(
             "Emergency thermal failsafe triggered: {} temp {:.1}°C exceeded ceiling {:.1}°C ({})",
             trip.sensor_type, trip.current_temp_c, trip.ceiling_temp_c, trip.message
         );
-        output_emitter.emit_error("WorkloadFailure", &msg, ExitCode::WorkloadFailure);
+        output_emitter.emit_error("ThermalTrip", &msg, ExitCode::WorkloadFailure);
         return Ok(ExitCode::WorkloadFailure);
     }
 
@@ -265,8 +273,9 @@ pub fn run_multi_gpu_benchmark(
     }
 
     // 6. Emit Node Summary Record
-    let summary = SummaryRecord::new(
+    let summary = SummaryRecord::new_with_preset(
         "ok",
+        &opts.res_tag,
         total_node_score,
         elapsed_total,
         num_gpus,
@@ -378,7 +387,9 @@ fn run_worker_thread(
         Err(e) => return WorkerOutcome::Failed(format!("GPU {} pipeline error: {}", gpu_index, e)),
     };
 
-    let mut failsafe = ThermalFailsafe::new(opts.max_temp_c, opts.failsafe_enabled);
+    let mut failsafe = ThermalFailsafe::new(opts.max_temp_c, opts.failsafe_enabled)
+        .with_gpu_index(gpu_index)
+        .with_datacenter_preset(opts.is_datacenter_preset);
     let mut scorer = BenchmarkScorer::new();
     let compute_pixels = (opts.compute_width * opts.compute_height) as u64;
 
@@ -551,6 +562,7 @@ fn run_worker_thread(
             cpu_name: stats.cpu_name,
             cpu_threads: stats.cpu_threads,
         },
+        preset: opts.res_tag.clone(),
         total_elapsed_seconds: duration_s,
         total_frames: opts.frames_per_scene * 8,
         overall_score: total_score,

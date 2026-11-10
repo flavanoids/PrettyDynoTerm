@@ -55,6 +55,82 @@ pub struct TelemetrySnapshot {
     pub vram_used_mb: u64,
 }
 
+/// Advisory assessment threshold table per hardware vendor.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VendorThresholds {
+    /// Maximum expected die delta (°C) between junction/hotspot and edge
+    pub max_die_delta_c: f32,
+    /// Critical thermal headroom safety floor (°C)
+    pub min_thermal_headroom_c: f32,
+    /// Sustained clock drop ratio (p95 clock < max * ratio triggers throttling flag)
+    pub clock_drop_ratio: f32,
+    /// Power cap saturation ratio (power >= cap * ratio indicates power limit pegged)
+    pub power_cap_ratio: f32,
+}
+
+impl VendorThresholds {
+    pub const AMD: Self = Self {
+        max_die_delta_c: 28.0,
+        min_thermal_headroom_c: 5.0,
+        clock_drop_ratio: 0.78,
+        power_cap_ratio: 0.98,
+    };
+
+    pub const NVIDIA: Self = Self {
+        max_die_delta_c: 25.0,
+        min_thermal_headroom_c: 5.0,
+        clock_drop_ratio: 0.80,
+        power_cap_ratio: 0.98,
+    };
+
+    pub fn for_vendor(is_nvidia: bool) -> Self {
+        if is_nvidia { Self::NVIDIA } else { Self::AMD }
+    }
+
+    pub fn for_vendor_name(gpu_name: &str) -> Self {
+        let lower = gpu_name.to_lowercase();
+        let is_nvidia = lower.contains("nvidia")
+            || lower.contains("h100")
+            || lower.contains("h200")
+            || lower.contains("geforce")
+            || lower.contains("quadro")
+            || lower.contains("tesla");
+        Self::for_vendor(is_nvidia)
+    }
+}
+
+pub fn decode_nvml_throttle_reasons(mask: u64) -> Vec<String> {
+    let mut reasons = Vec::new();
+    if mask & 0x0000000000000001 != 0 {
+        reasons.push("gpu_idle".to_string());
+    }
+    if mask & 0x0000000000000002 != 0 {
+        reasons.push("applications_clocks_setting".to_string());
+    }
+    if mask & 0x0000000000000004 != 0 {
+        reasons.push("sw_power_cap".to_string());
+    }
+    if mask & 0x0000000000000008 != 0 {
+        reasons.push("hw_slowdown".to_string());
+    }
+    if mask & 0x0000000000000010 != 0 {
+        reasons.push("sync_boost".to_string());
+    }
+    if mask & 0x0000000000000020 != 0 {
+        reasons.push("sw_thermal_slowdown".to_string());
+    }
+    if mask & 0x0000000000000040 != 0 {
+        reasons.push("hw_thermal_slowdown".to_string());
+    }
+    if mask & 0x0000000000000080 != 0 {
+        reasons.push("hw_power_brake_slowdown".to_string());
+    }
+    if mask & 0x0000000000000100 != 0 {
+        reasons.push("display_clocks_setting".to_string());
+    }
+    reasons
+}
+
 /// Comprehensive automated evaluation of GPU sensors, thermals, cooling, and throttling.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GpuTelemetryAssessment {
@@ -84,6 +160,10 @@ pub struct GpuTelemetryAssessment {
     pub cooling_efficiency_rating: String,
     pub throttling_detected: bool,
     pub power_limit_pegged: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub advisory_flags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub nvml_throttle_reasons_decoded: Vec<String>,
 }
 
 impl GpuTelemetryAssessment {
@@ -209,24 +289,76 @@ impl GpuTelemetryAssessment {
             0.0
         };
 
-        // Automated Assessment Evaluation
-        let throttling_detected = hotspot_metric.max > 0.0
+        let thresholds = VendorThresholds::for_vendor_name(&final_stats.gpu_name);
+        let mut advisory_flags = Vec::new();
+
+        if delta_hotspot_edge_c > thresholds.max_die_delta_c {
+            advisory_flags.push(format!(
+                "Junction-edge delta {:.1}°C exceeds nominal {:.1}°C",
+                delta_hotspot_edge_c, thresholds.max_die_delta_c
+            ));
+        }
+
+        if hotspot_metric.max > 0.0 && thermal_headroom_c < thresholds.min_thermal_headroom_c {
+            advisory_flags.push(format!(
+                "Low thermal headroom: {:.1}°C to critical ceiling",
+                thermal_headroom_c
+            ));
+        }
+
+        let sustained_clock_drop = core_clock_metric.max > 500.0
+            && core_clock_metric.p95 < core_clock_metric.max * thresholds.clock_drop_ratio
+            && gpu_util_metric.avg > 80.0;
+        if sustained_clock_drop {
+            advisory_flags.push(format!(
+                "Sustained clock drop under load: p95 {:.0} MHz vs peak {:.0} MHz",
+                core_clock_metric.p95, core_clock_metric.max
+            ));
+        }
+
+        let power_limit_pegged = final_stats.gpu_power_cap_w > 0.0
+            && power_metric.max >= final_stats.gpu_power_cap_w * thresholds.power_cap_ratio;
+        if power_limit_pegged {
+            advisory_flags.push(format!(
+                "Power cap reached: {:.1}W >= {:.0}% of {:.1}W cap",
+                power_metric.max,
+                thresholds.power_cap_ratio * 100.0,
+                final_stats.gpu_power_cap_w
+            ));
+        }
+
+        let mut nvml_throttle_reasons_decoded = Vec::new();
+        if let Some(mask) = final_stats.nvml_throttle_reasons {
+            nvml_throttle_reasons_decoded = decode_nvml_throttle_reasons(mask);
+            for reason in &nvml_throttle_reasons_decoded {
+                advisory_flags.push(format!("NVML Throttle Reason: {}", reason));
+            }
+        }
+
+        let nvml_thermal_or_slowdown = nvml_throttle_reasons_decoded
+            .iter()
+            .any(|r| r.contains("slowdown") || r.contains("thermal"));
+
+        // Automated Assessment Evaluation (Advisory only)
+        let throttling_detected = (hotspot_metric.max > 0.0
             && ((thermal_headroom_c <= 2.0 && hotspot_metric.max >= 95.0)
                 || (hotspot_metric.max >= crit_limit)
-                || (core_clock_metric.max > 1800.0
-                    && core_clock_metric.p95 < core_clock_metric.max * 0.78
-                    && gpu_util_metric.avg > 85.0));
+                || sustained_clock_drop))
+            || nvml_thermal_or_slowdown;
 
         let cooling_efficiency_rating = if hotspot_metric.max == 0.0 || edge_metric.max == 0.0 {
             "UNKNOWN (Thermal Sensors Inactive)".to_string()
         } else if delta_hotspot_edge_c <= 18.0 {
             "OPTIMAL (Die Δ ≤ 18°C, Vapor Chamber Coupling)".to_string()
-        } else if delta_hotspot_edge_c <= 28.0 {
-            "NOMINAL (Die Δ ≤ 28°C, Healthy Thermal Interface)".to_string()
-        } else if delta_hotspot_edge_c <= 35.0 {
-            "ELEVATED (Die Δ 29-35°C, Warm Thermal Gradient)".to_string()
+        } else if delta_hotspot_edge_c <= thresholds.max_die_delta_c {
+            format!(
+                "NOMINAL (Die Δ ≤ {:.0}°C, Healthy Thermal Interface)",
+                thresholds.max_die_delta_c
+            )
+        } else if delta_hotspot_edge_c <= thresholds.max_die_delta_c + 7.0 {
+            "ELEVATED (Die Δ Warm Thermal Gradient)".to_string()
         } else {
-            "CRITICAL (Die Δ > 35°C, Degraded Paste/Coupling)".to_string()
+            "CRITICAL (Die Δ Degraded Paste/Coupling)".to_string()
         };
 
         let thermal_verdict = if hotspot_metric.max == 0.0 {
@@ -244,9 +376,6 @@ impl GpuTelemetryAssessment {
                 thermal_headroom_c
             )
         };
-
-        let power_limit_pegged = final_stats.gpu_power_cap_w > 0.0
-            && power_metric.max >= final_stats.gpu_power_cap_w * 0.98;
 
         Self {
             vram_vendor: if final_stats.vram_vendor.is_empty() {
@@ -279,6 +408,8 @@ impl GpuTelemetryAssessment {
             cooling_efficiency_rating,
             throttling_detected,
             power_limit_pegged,
+            advisory_flags,
+            nvml_throttle_reasons_decoded,
         }
     }
 }
@@ -376,6 +507,11 @@ pub fn format_gpu_assessment_box(assessment: &GpuTelemetryAssessment) -> String 
         verdict_col, verdict_sym, assessment.thermal_verdict
     );
     out.push_str(&format_assessment_line(&verdict_line, 72));
+
+    for flag in &assessment.advisory_flags {
+        let flag_line = format!("Advisory Note    : \x1b[38;2;255;180;0m⚠ {}\x1b[0m", flag);
+        out.push_str(&format_assessment_line(&flag_line, 72));
+    }
 
     out
 }

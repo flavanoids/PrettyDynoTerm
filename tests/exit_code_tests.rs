@@ -56,6 +56,10 @@ fn test_exit_code_1_workload_failure() {
         stdout.contains("\"type\":\"error\""),
         "JSONL stream should emit error record on workload failure"
     );
+    assert!(
+        stdout.contains("\"type\":\"thermal_trip\""),
+        "JSONL stream should emit thermal_trip record on thermal tripwire breach"
+    );
 }
 
 #[test]

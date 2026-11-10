@@ -2,6 +2,7 @@ pub mod consistency;
 pub mod failsafe;
 pub mod history;
 pub mod telemetry;
+pub mod vram_tier;
 pub use consistency::{
     ConsistencyReport, DEFAULT_CONSISTENCY_FILE, SceneConsistencyStats, StatSummary,
     compute_consistency_report, format_consistency_scorecard, load_consistency_report,
@@ -19,6 +20,7 @@ pub use history::{
 pub use telemetry::{
     GpuTelemetryAssessment, SensorMetric, TelemetrySnapshot, format_gpu_assessment_box,
 };
+pub use vram_tier::{DatacenterTier, VramAllocationPlan};
 
 /// Safely truncates a string slice to at most `max_chars` unicode characters without slicing mid-codepoint.
 pub fn safe_truncate(s: &str, max_chars: usize) -> &str {
@@ -59,6 +61,8 @@ pub struct SceneResult {
 pub struct BenchmarkReport {
     pub timestamp: String,
     pub system_info: SystemReport,
+    #[serde(default)]
+    pub preset: String,
     pub total_elapsed_seconds: f64,
     pub total_frames: u32,
     pub overall_score: f64,
@@ -492,6 +496,7 @@ mod tests {
                 cpu_name: "Test CPU".to_string(),
                 cpu_threads: 16,
             },
+            preset: "standard".to_string(),
             total_elapsed_seconds: 12.5,
             total_frames: 600,
             overall_score: 954.00,
@@ -539,6 +544,7 @@ mod tests {
                 cpu_name: "Mock CPU".to_string(),
                 cpu_threads: 4,
             },
+            preset: "standard".to_string(),
             total_elapsed_seconds: 1.0,
             total_frames: 60,
             overall_score: 100.00,
@@ -577,6 +583,7 @@ mod tests {
                 cpu_name: "Test CPU".to_string(),
                 cpu_threads: 16,
             },
+            preset: "standard".to_string(),
             total_elapsed_seconds: 10.0,
             total_frames: 600,
             overall_score: 1000.00,
@@ -606,6 +613,7 @@ mod tests {
         let report2 = BenchmarkReport {
             timestamp: "2026-11-04 10:30:00 UTC".to_string(),
             system_info: report1.system_info.clone(),
+            preset: "standard".to_string(),
             total_elapsed_seconds: 9.5,
             total_frames: 600,
             overall_score: 1050.00,

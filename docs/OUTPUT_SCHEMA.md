@@ -151,3 +151,20 @@ Emitted when the application is cancelled via `SIGINT` or `SIGTERM`:
   "exit_code": 4
 }
 ```
+
+### 2.7 Thermal Trip Record (`type: "thermal_trip"`)
+Emitted immediately if GPU silicon junction, memory (HBM), or package edge temperature breaches the thermal ceiling for 3 consecutive samples:
+
+```json
+{
+  "schema_version": "1.0.0",
+  "type": "thermal_trip",
+  "timestamp": "2026-11-10T14:30:08.120Z",
+  "gpu": 0,
+  "sensor": "junction",
+  "value": 96.5,
+  "ceiling": 95.0,
+  "critical": 105.0,
+  "exit_code": 1
+}
+```

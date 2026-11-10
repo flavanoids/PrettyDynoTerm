@@ -535,7 +535,15 @@ fn test_telemetry_suite() -> TestReport {
         gpu_hotspot_c: 106.0,
         ..Default::default()
     };
-    if failsafe.check(&safe_stats).is_none() && failsafe.check(&danger_stats).is_some() {
+    let safe_check_ok = failsafe.check(&safe_stats).is_none();
+    let mut danger_tripped = false;
+    for _ in 0..failsafe.trip_threshold_samples {
+        if failsafe.check(&danger_stats).is_some() {
+            danger_tripped = true;
+            break;
+        }
+    }
+    if safe_check_ok && danger_tripped {
         details.push("Emergency thermal failsafe & tripwire safeguards verified".to_string());
     } else {
         passed = false;
@@ -612,6 +620,7 @@ fn test_benchmark_suite() -> TestReport {
             cpu_name: "Test CPU".to_string(),
             cpu_threads: 8,
         },
+        preset: "standard".to_string(),
         total_elapsed_seconds: 5.0,
         total_frames: 300,
         overall_score: 500.00,
