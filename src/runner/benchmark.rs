@@ -49,10 +49,17 @@ pub fn execute_benchmark_pass(
 
         let scene_start = Instant::now();
         let mut last_terminal_draw = Instant::now();
+        let mut last_progress_emit = Instant::now();
 
         for frame_idx in 0..opts.frames_per_scene {
-            // Check for exit abort key or HUD toggle
-            if event::poll(Duration::from_millis(0))?
+            // Check for process termination signal (SIGINT / SIGTERM)
+            if crate::signal::is_termination_requested() {
+                return Ok(BenchmarkPassResult::Cancelled);
+            }
+
+            // Check for exit abort key or HUD toggle (interactive mode only)
+            if !session.is_headless()
+                && event::poll(Duration::from_millis(0))?
                 && let Event::Key(key) = event::read()?
             {
                 if (key.modifiers.contains(KeyModifiers::CONTROL)
@@ -74,9 +81,10 @@ pub fn execute_benchmark_pass(
             let elapsed = scene_start.elapsed().as_secs_f32();
             total_frames_completed += 1;
 
-            // Decoupled 60 FPS Terminal preview
-            let should_draw_terminal = last_terminal_draw.elapsed() >= Duration::from_millis(16)
-                || frame_idx == opts.frames_per_scene - 1;
+            // Decoupled 60 FPS Terminal preview (only drawn when not headless)
+            let should_draw_terminal = !session.is_headless()
+                && (last_terminal_draw.elapsed() >= Duration::from_millis(16)
+                    || frame_idx == opts.frames_per_scene - 1);
 
             if scene_id < 7 {
                 // GPU Compute Scenes (Full Uncapped Stress)
@@ -111,6 +119,38 @@ pub fn execute_benchmark_pass(
                 }
 
                 scorer.record_frame_with_stats(frame_dur, scene_id, &stats);
+
+                // Emit streaming progress in jsonl mode (>= 1/s or scene boundary)
+                if session.output_emitter.format().is_jsonl()
+                    && (last_progress_emit.elapsed() >= Duration::from_secs(1)
+                        || frame_idx == opts.frames_per_scene - 1)
+                {
+                    last_progress_emit = Instant::now();
+                    let current_fps = if frame_dur.as_secs_f32() > 0.0 {
+                        1.0 / frame_dur.as_secs_f32()
+                    } else {
+                        0.0
+                    };
+                    let prog = crate::output::ProgressRecord::new(
+                        scene_id,
+                        SCENE_NAMES[scene_id as usize],
+                        frame_idx + 1,
+                        opts.frames_per_scene,
+                        current_fps,
+                        0,
+                        if stats.gpu_temp_c > 0.0 {
+                            Some(stats.gpu_temp_c)
+                        } else {
+                            None
+                        },
+                        if stats.gpu_power_w > 0.0 {
+                            Some(stats.gpu_power_w)
+                        } else {
+                            None
+                        },
+                    );
+                    session.output_emitter.emit_jsonl(&prog);
+                }
 
                 if should_draw_terminal {
                     last_terminal_draw = Instant::now();
@@ -148,6 +188,38 @@ pub fn execute_benchmark_pass(
                 }
 
                 scorer.record_frame_with_stats(frame_dur, scene_id, &stats);
+
+                // Emit streaming progress in jsonl mode (>= 1/s or scene boundary)
+                if session.output_emitter.format().is_jsonl()
+                    && (last_progress_emit.elapsed() >= Duration::from_secs(1)
+                        || frame_idx == opts.frames_per_scene - 1)
+                {
+                    last_progress_emit = Instant::now();
+                    let current_fps = if frame_dur.as_secs_f32() > 0.0 {
+                        1.0 / frame_dur.as_secs_f32()
+                    } else {
+                        0.0
+                    };
+                    let prog = crate::output::ProgressRecord::new(
+                        scene_id,
+                        SCENE_NAMES[scene_id as usize],
+                        frame_idx + 1,
+                        opts.frames_per_scene,
+                        current_fps,
+                        0,
+                        if stats.gpu_temp_c > 0.0 {
+                            Some(stats.gpu_temp_c)
+                        } else {
+                            None
+                        },
+                        if stats.gpu_power_w > 0.0 {
+                            Some(stats.gpu_power_w)
+                        } else {
+                            None
+                        },
+                    );
+                    session.output_emitter.emit_jsonl(&prog);
+                }
 
                 if should_draw_terminal {
                     last_terminal_draw = Instant::now();
@@ -241,9 +313,32 @@ pub fn execute_benchmark_pass(
 pub fn run_benchmark(
     session: &mut TerminalSession,
     opts: &BenchmarkOptions,
-) -> Result<(), Box<dyn std::error::Error>> {
-    session.renderer.enter_alternate_screen()?;
-    crossterm::terminal::enable_raw_mode()?;
+) -> Result<crate::output::ExitCode, Box<dyn std::error::Error>> {
+    let start_time = Instant::now();
+
+    // In jsonl mode, emit StartRecord at launch
+    if session.output_emitter.format().is_jsonl() {
+        let start_rec = crate::output::StartRecord::new(
+            "benchmark",
+            session.res_tag,
+            opts.frames_per_scene,
+            8,
+            vec![crate::output::GpuStartInfo {
+                index: 0,
+                name: session.adapter_info.name.clone(),
+                backend: format!("{:?}", session.adapter_info.backend),
+                driver: session.adapter_info.driver.clone(),
+                pci_bus_id: None,
+            }],
+            opts.failsafe_enabled,
+        );
+        session.output_emitter.emit_jsonl(&start_rec);
+    }
+
+    if !session.is_headless() {
+        session.renderer.enter_alternate_screen()?;
+        crossterm::terminal::enable_raw_mode()?;
+    }
 
     let pass_opts = BenchmarkPassOptions {
         frames_per_scene: opts.frames_per_scene,
@@ -254,42 +349,135 @@ pub fn run_benchmark(
 
     let pass_res = execute_benchmark_pass(session, &pass_opts);
 
-    crossterm::terminal::disable_raw_mode()?;
-    let _ = session.renderer.leave_alternate_screen();
+    if !session.is_headless() {
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = session.renderer.leave_alternate_screen();
+    }
+
+    let total_elapsed = start_time.elapsed().as_secs_f64();
 
     let report = match pass_res? {
         BenchmarkPassResult::Completed(r) => *r,
-        BenchmarkPassResult::AbortedByUser => {
-            println!("Benchmark aborted by user.");
-            return Ok(());
+        BenchmarkPassResult::AbortedByUser | BenchmarkPassResult::Cancelled => {
+            session
+                .output_emitter
+                .emit_cancelled("SIGINT or SIGTERM signal received", total_elapsed);
+            return Ok(crate::output::ExitCode::Cancelled);
         }
         BenchmarkPassResult::ThermalTrip(trip) => {
-            print_emergency_thermal_box(&trip);
-            return Ok(());
+            session.output_emitter.emit_error(
+                "ThermalTrip",
+                &trip.message,
+                crate::output::ExitCode::WorkloadFailure,
+            );
+            if session.output_emitter.format().is_human() && !session.is_headless() {
+                print_emergency_thermal_box(&trip);
+            }
+            return Ok(crate::output::ExitCode::WorkloadFailure);
         }
     };
 
-    if let Err(e) = BenchmarkScorer::save_report(&report, &opts.output_path) {
+    if let Some(ref report_path) = opts.report_file
+        && let Err(e) = BenchmarkScorer::save_report(&report, report_path)
+    {
         eprintln!(
-            "\r\n\x1b[38;2;255;80;80;1m⚠ Warning: Failed to save benchmark report to '{}': {}\x1b[0m",
-            opts.output_path, e
+            "Warning: Failed to save benchmark report to '{}': {}",
+            report_path, e
         );
     }
-    let _ = crate::benchmark::append_to_history(&report, DEFAULT_HISTORY_FILE);
-    print_scorecard(&report, &opts.output_path, session.res_tag);
 
-    // If baseline exists, display comparison table
-    if let Some(baseline) = load_baseline(DEFAULT_BASELINE_FILE) {
-        let comparison = compare_reports(&report, &baseline);
-        println!();
-        print!("{}", format_comparison_table(&comparison));
-    } else {
+    match session.output_emitter.format() {
+        crate::output::OutputFormat::Jsonl => {
+            // Emit GpuResultRecord
+            let scenes = report
+                .scene_results
+                .iter()
+                .map(|s| crate::output::SceneResultRecord {
+                    scene_id: s.scene_id,
+                    name: s.scene_name.clone(),
+                    fps: s.avg_fps,
+                    score: s.score,
+                })
+                .collect();
+
+            let avg_fps = report.total_frames as f64 / (report.total_elapsed_seconds + 1e-6);
+            let gpu_res = crate::output::GpuResultRecord::new(
+                0,
+                &report.system_info.gpu_name,
+                report.overall_score,
+                avg_fps,
+                0.0,
+                scenes,
+                if report.peak_gpu_temp_c > 0.0 {
+                    Some(report.peak_gpu_temp_c)
+                } else {
+                    None
+                },
+                if report.peak_gpu_power_w > 0.0 {
+                    Some(report.peak_gpu_power_w)
+                } else {
+                    None
+                },
+            );
+            session.output_emitter.emit_jsonl(&gpu_res);
+
+            // Emit SummaryRecord
+            let summary = crate::output::SummaryRecord::new(
+                "ok",
+                report.overall_score,
+                report.total_elapsed_seconds,
+                crate::output::ExitCode::Ok.as_i32(),
+            );
+            session.output_emitter.emit_jsonl(&summary);
+        }
+        crate::output::OutputFormat::Json => {
+            if let Ok(json) = serde_json::to_string_pretty(&report) {
+                println!("{}", json);
+            }
+        }
+        crate::output::OutputFormat::Human => {
+            let _ = crate::benchmark::append_to_history(&report, DEFAULT_HISTORY_FILE);
+            if !session.is_headless() {
+                let report_dest = opts.report_file.as_deref().unwrap_or("stdout");
+                print_scorecard(&report, report_dest, session.res_tag);
+                if let Some(baseline) = load_baseline(DEFAULT_BASELINE_FILE) {
+                    let comparison = compare_reports(&report, &baseline);
+                    println!();
+                    print!("{}", format_comparison_table(&comparison));
+                } else {
+                    println!(
+                        "\r\n\x1b[38;2;120;140;160m💡 Tip: Set this run as your reference baseline with:\x1b[0m \x1b[1mdyno_term --set-baseline\x1b[0m"
+                    );
+                }
+            } else {
+                print_plain_scorecard(&report, session.res_tag);
+            }
+        }
+    }
+
+    Ok(crate::output::ExitCode::Ok)
+}
+
+pub fn print_plain_scorecard(report: &BenchmarkReport, resolution: &str) {
+    println!("=== DYNO_TERM BENCHMARK REPORT ===");
+    println!(
+        "GPU: {} ({})",
+        report.system_info.gpu_name, report.system_info.gpu_backend
+    );
+    println!(
+        "CPU: {} ({} Threads)",
+        report.system_info.cpu_name, report.system_info.cpu_threads
+    );
+    println!("Resolution: {}", resolution);
+    println!("Overall Score: {:.2}", report.overall_score);
+    println!("Total Elapsed Time: {:.2}s", report.total_elapsed_seconds);
+    println!("Scenes:");
+    for s in &report.scene_results {
         println!(
-            "\r\n\x1b[38;2;120;140;160m💡 Tip: Set this run as your reference baseline with:\x1b[0m \x1b[1mdyno_term --set-baseline\x1b[0m"
+            "  - {}: {:.1} FPS, {:.2} pts",
+            s.scene_name, s.avg_fps, s.score
         );
     }
-
-    Ok(())
 }
 
 pub fn print_scorecard(report: &BenchmarkReport, output_path: &str, resolution: &str) {

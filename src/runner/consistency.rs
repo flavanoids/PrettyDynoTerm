@@ -29,7 +29,12 @@ pub fn run_cooldown_screen(
     let cooldown_dur = Duration::from_secs(opts.cooldown_seconds);
 
     loop {
-        if event::poll(Duration::from_millis(100))?
+        if crate::signal::is_termination_requested() {
+            return Ok(false);
+        }
+
+        if !session.is_headless()
+            && event::poll(Duration::from_millis(100))?
             && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
         {
@@ -47,6 +52,8 @@ pub fn run_cooldown_screen(
                 }
                 _ => {}
             }
+        } else if session.is_headless() {
+            std::thread::sleep(Duration::from_millis(100));
         }
 
         let elapsed = start_time.elapsed();
@@ -172,13 +179,19 @@ pub fn run_consistency_suite(
     opts: &ConsistencyOptions,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let iterations = opts.iterations.max(1);
-    session.renderer.enter_alternate_screen()?;
-    crossterm::terminal::enable_raw_mode()?;
+    if !session.is_headless() {
+        session.renderer.enter_alternate_screen()?;
+        crossterm::terminal::enable_raw_mode()?;
+    }
 
     let mut completed_runs: Vec<BenchmarkReport> = Vec::with_capacity(iterations);
     let mut halted_by_thermal = false;
 
     for i in 1..=iterations {
+        if crate::signal::is_termination_requested() {
+            break;
+        }
+
         let pass_opts = BenchmarkPassOptions {
             frames_per_scene: opts.frames_per_scene,
             iteration_info: Some((i, iterations)),
@@ -190,19 +203,23 @@ pub fn run_consistency_suite(
 
         let report = match pass_res {
             Ok(BenchmarkPassResult::Completed(r)) => *r,
-            Ok(BenchmarkPassResult::AbortedByUser) => {
+            Ok(BenchmarkPassResult::AbortedByUser | BenchmarkPassResult::Cancelled) => {
                 break;
             }
             Ok(BenchmarkPassResult::ThermalTrip(trip)) => {
-                crossterm::terminal::disable_raw_mode()?;
-                let _ = session.renderer.leave_alternate_screen();
-                print_emergency_thermal_box(&trip);
+                if !session.is_headless() {
+                    let _ = crossterm::terminal::disable_raw_mode();
+                    let _ = session.renderer.leave_alternate_screen();
+                    print_emergency_thermal_box(&trip);
+                }
                 halted_by_thermal = true;
                 break;
             }
             Err(e) => {
-                crossterm::terminal::disable_raw_mode()?;
-                let _ = session.renderer.leave_alternate_screen();
+                if !session.is_headless() {
+                    let _ = crossterm::terminal::disable_raw_mode();
+                    let _ = session.renderer.leave_alternate_screen();
+                }
                 return Err(e);
             }
         };
@@ -226,8 +243,10 @@ pub fn run_consistency_suite(
         }
     }
 
-    crossterm::terminal::disable_raw_mode()?;
-    let _ = session.renderer.leave_alternate_screen();
+    if !session.is_headless() {
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = session.renderer.leave_alternate_screen();
+    }
 
     if halted_by_thermal {
         eprintln!(
@@ -248,14 +267,21 @@ pub fn run_consistency_suite(
         session.res_tag,
     );
 
-    print!("{}", format_consistency_scorecard(&report));
-    if let Err(e) = save_consistency_report(&report, &opts.output_path) {
+    let output_file = opts
+        .report_file
+        .as_deref()
+        .unwrap_or("dyno_consistency_results.json");
+
+    if !session.is_headless() {
+        print!("{}", format_consistency_scorecard(&report));
+    }
+    if let Err(e) = save_consistency_report(&report, output_file) {
         eprintln!(
             "\r\n\x1b[38;2;255;80;80;1m⚠ Warning: Failed to save consistency report to '{}': {}\x1b[0m",
-            opts.output_path, e
+            output_file, e
         );
-    } else {
-        println!("Consistency report saved to: {}", opts.output_path);
+    } else if !session.is_headless() {
+        println!("Consistency report saved to: {}", output_file);
     }
 
     Ok(())

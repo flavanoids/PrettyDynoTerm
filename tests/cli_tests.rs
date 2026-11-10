@@ -1,5 +1,6 @@
 use clap::Parser;
 use dyno_term::cli::{Args, parse_resolution};
+use dyno_term::output::OutputFormat;
 
 #[test]
 fn test_cli_default_args() {
@@ -8,10 +9,12 @@ fn test_cli_default_args() {
     assert!(!args.demo);
     assert!(!args.test);
     assert!(!args.uncapped);
+    assert!(!args.headless);
     assert_eq!(args.frames, 100);
     assert_eq!(args.res, "4k");
     assert_eq!(args.scene, 0);
-    assert_eq!(args.output, "dyno_benchmark_results.json");
+    assert_eq!(args.output, OutputFormat::Human);
+    assert_eq!(args.report_file, None);
 }
 
 #[test]
@@ -37,14 +40,19 @@ fn test_cli_benchmark_flags() {
         "--res",
         "8k",
         "--output",
+        "jsonl",
+        "--report-file",
         "my_results.json",
+        "--headless",
     ])
     .expect("Failed to parse benchmark flags");
 
     assert!(args.benchmark);
+    assert!(args.headless);
     assert_eq!(args.frames, 250);
     assert_eq!(args.res, "8k");
-    assert_eq!(args.output, "my_results.json");
+    assert_eq!(args.output, OutputFormat::Jsonl);
+    assert_eq!(args.report_file, Some("my_results.json".to_string()));
 }
 
 #[test]

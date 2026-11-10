@@ -9,6 +9,31 @@ pub struct GpuAdapterInfo {
     pub driver: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GpuInitError {
+    NoAdapterFound(String),
+    AdapterIndexOutOfBounds { index: usize, found: usize },
+    DeviceRequestFailed(String),
+}
+
+impl std::fmt::Display for GpuInitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoAdapterFound(msg) => write!(f, "No compatible GPU adapter found: {}", msg),
+            Self::AdapterIndexOutOfBounds { index, found } => {
+                write!(
+                    f,
+                    "GPU adapter index {} out of bounds (found {} adapters)",
+                    index, found
+                )
+            }
+            Self::DeviceRequestFailed(msg) => write!(f, "Failed to request GPU device: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for GpuInitError {}
+
 #[allow(dead_code)]
 pub struct GpuContext {
     pub instance: Instance,
@@ -19,21 +44,22 @@ pub struct GpuContext {
 }
 
 impl GpuContext {
-    pub async fn new(preferred_adapter_index: Option<usize>) -> Result<Self, String> {
+    pub async fn new(preferred_adapter_index: Option<usize>) -> Result<Self, GpuInitError> {
         let instance = Instance::default();
 
         let adapters: Vec<Adapter> = instance.enumerate_adapters(Backends::PRIMARY).await;
         if adapters.is_empty() {
-            return Err("No compatible GPU adapter found (Vulkan/Metal/DX12)".to_string());
+            return Err(GpuInitError::NoAdapterFound(
+                "No Vulkan/Metal/DX12 primary adapter available on system".to_string(),
+            ));
         }
 
         let selected_index = if let Some(idx) = preferred_adapter_index {
             if idx >= adapters.len() {
-                return Err(format!(
-                    "Adapter index {} out of bounds (found {})",
-                    idx,
-                    adapters.len()
-                ));
+                return Err(GpuInitError::AdapterIndexOutOfBounds {
+                    index: idx,
+                    found: adapters.len(),
+                });
             }
             idx
         } else {
@@ -65,7 +91,7 @@ impl GpuContext {
                 ..Default::default()
             })
             .await
-            .map_err(|e| format!("Failed to request GPU device: {:?}", e))?;
+            .map_err(|e| GpuInitError::DeviceRequestFailed(format!("{:?}", e)))?;
 
         Ok(Self {
             instance,

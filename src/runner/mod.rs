@@ -30,7 +30,9 @@ pub fn wait_for_menu_return() -> Result<(), Box<dyn std::error::Error>> {
                     break;
                 }
                 match key.code {
-                    KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Esc | KeyCode::Char('q') => break,
+                    KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Esc | KeyCode::Char('q') => {
+                        break;
+                    }
                     _ => {}
                 }
             }

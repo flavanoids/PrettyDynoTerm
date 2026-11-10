@@ -337,10 +337,12 @@ dependencies = [
  "bytemuck",
  "clap",
  "crossterm",
+ "libc",
  "pollster",
  "rayon",
  "serde",
  "serde_json",
+ "signal-hook",
  "wgpu",
 ]
 

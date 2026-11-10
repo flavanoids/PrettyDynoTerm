@@ -1,4 +1,4 @@
-use super::{safe_truncate, sanitize_terminal_string, BenchmarkReport};
+use super::{BenchmarkReport, safe_truncate, sanitize_terminal_string};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};

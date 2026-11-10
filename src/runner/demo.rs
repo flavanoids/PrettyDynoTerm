@@ -22,8 +22,10 @@ pub fn run_interactive_demo(
     session: &mut TerminalSession,
     opts: &DemoOptions,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    session.renderer.enter_alternate_screen()?;
-    crossterm::terminal::enable_raw_mode()?;
+    if !session.is_headless() {
+        session.renderer.enter_alternate_screen()?;
+        crossterm::terminal::enable_raw_mode()?;
+    }
 
     let mut term_width = session.term_width;
     let mut term_height = session.term_height;
@@ -49,10 +51,15 @@ pub fn run_interactive_demo(
     let mut last_terminal_draw = Instant::now();
 
     loop {
+        if crate::signal::is_termination_requested() {
+            break;
+        }
+
         let frame_start = Instant::now();
 
-        // Handle user input
-        if event::poll(Duration::from_millis(0))?
+        // Handle user input (interactive mode only)
+        if !session.is_headless()
+            && event::poll(Duration::from_millis(0))?
             && let Event::Key(key) = event::read()?
         {
             if key.kind != KeyEventKind::Press {
@@ -152,9 +159,11 @@ pub fn run_interactive_demo(
                 hud.is_uncapped = false;
             } else {
                 // Tripwire hit even while running capped at 60 FPS: emergency shutdown to protect silicon
-                crossterm::terminal::disable_raw_mode()?;
-                let _ = session.renderer.leave_alternate_screen();
-                crate::benchmark::print_emergency_thermal_box(&trip);
+                if !session.is_headless() {
+                    let _ = crossterm::terminal::disable_raw_mode();
+                    let _ = session.renderer.leave_alternate_screen();
+                    crate::benchmark::print_emergency_thermal_box(&trip);
+                }
                 eprintln!(
                     "\x1b[38;2;255;180;0;1m[!] Interactive demo terminated to protect hardware silicon from thermal exhaustion.\x1b[0m\r\n"
                 );
@@ -197,7 +206,9 @@ pub fn run_interactive_demo(
         }
     }
 
-    crossterm::terminal::disable_raw_mode()?;
-    session.renderer.leave_alternate_screen()?;
+    if !session.is_headless() {
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = session.renderer.leave_alternate_screen();
+    }
     Ok(())
 }

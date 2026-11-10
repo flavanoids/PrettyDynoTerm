@@ -1,3 +1,4 @@
+use crate::output::OutputFormat;
 use clap::Parser;
 
 #[derive(Parser, Debug, Clone)]
@@ -10,6 +11,22 @@ pub struct Args {
     /// Open the interactive CLI launcher menu (default when no mode flag is passed)
     #[arg(short, long)]
     pub menu: bool,
+
+    /// Run in headless mode: no TTY, no raw mode, no terminal control sequences
+    #[arg(long)]
+    pub headless: bool,
+
+    /// Output format (human, json, jsonl)
+    #[arg(short, long, value_enum, default_value_t = OutputFormat::Human)]
+    pub output: OutputFormat,
+
+    /// Optional path to save benchmark JSON report file
+    #[arg(long)]
+    pub report_file: Option<String>,
+
+    /// Internal test flag: trigger intentional internal error (exit code 5)
+    #[arg(long, hide = true)]
+    pub test_internal_error: bool,
 
     /// Run the deterministic benchmark suite directly
     #[arg(short, long)]
@@ -74,10 +91,6 @@ pub struct Args {
     /// Custom render height in pixels
     #[arg(long)]
     pub height: Option<u32>,
-
-    /// Output JSON path for benchmark report
-    #[arg(short, long, default_value = "dyno_benchmark_results.json")]
-    pub output: String,
 
     /// Show chronological table of all past benchmark runs and exit
     #[arg(long)]

@@ -30,15 +30,21 @@ impl Default for ThermalFailsafe {
 
 impl ThermalFailsafe {
     pub fn new(max_hotspot_c: f32, enabled: bool) -> Self {
-        let safe_hotspot_c = if max_hotspot_c.is_finite() && (50.0..=125.0).contains(&max_hotspot_c) {
+        let safe_hotspot_c = if max_hotspot_c.is_finite() && max_hotspot_c > 0.0 {
             max_hotspot_c
         } else {
             105.0
         };
+        let safe_edge_c =
+            if max_hotspot_c.is_finite() && max_hotspot_c < 95.0 && max_hotspot_c > 0.0 {
+                max_hotspot_c
+            } else {
+                95.0
+            };
         Self {
             enabled,
             max_hotspot_c: safe_hotspot_c,
-            max_edge_c: 95.0,
+            max_edge_c: safe_edge_c,
             fan_stall_threshold_c: 78.0,
             fan_stall_consecutive_frames: 0,
         }
@@ -53,13 +59,17 @@ impl ThermalFailsafe {
 
         // 1. Silicon Junction / Hotspot Ceiling Check
         // Trigger if hotspot reaches user ceiling (default 105°C) or within 2.0°C of VBIOS crit limit.
-        let hotspot_limit = if stats.gpu_hotspot_crit_c.is_finite() && stats.gpu_hotspot_crit_c > 0.0 {
-            (stats.gpu_hotspot_crit_c - 2.0).min(self.max_hotspot_c)
-        } else {
-            self.max_hotspot_c
-        };
+        let hotspot_limit =
+            if stats.gpu_hotspot_crit_c.is_finite() && stats.gpu_hotspot_crit_c > 0.0 {
+                (stats.gpu_hotspot_crit_c - 2.0).min(self.max_hotspot_c)
+            } else {
+                self.max_hotspot_c
+            };
 
-        if stats.gpu_hotspot_c.is_finite() && stats.gpu_hotspot_c > 0.0 && stats.gpu_hotspot_c >= hotspot_limit {
+        if stats.gpu_hotspot_c.is_finite()
+            && stats.gpu_hotspot_c > 0.0
+            && stats.gpu_hotspot_c >= hotspot_limit
+        {
             return Some(ThermalTripReport {
                 sensor_type: "GPU Silicon Junction (Hotspot)".to_string(),
                 current_temp_c: stats.gpu_hotspot_c,
@@ -80,7 +90,8 @@ impl ThermalFailsafe {
             self.max_edge_c
         };
 
-        if stats.gpu_temp_c.is_finite() && stats.gpu_temp_c > 0.0 && stats.gpu_temp_c >= edge_limit {
+        if stats.gpu_temp_c.is_finite() && stats.gpu_temp_c > 0.0 && stats.gpu_temp_c >= edge_limit
+        {
             return Some(ThermalTripReport {
                 sensor_type: "GPU Package / Edge".to_string(),
                 current_temp_c: stats.gpu_temp_c,
@@ -550,7 +561,9 @@ mod tests {
             gpu_hotspot_c: 106.0,
             ..Default::default()
         };
-        let trip = failsafe.check(&stats).expect("Should trip on default 105.0 ceiling even with initial NaN");
+        let trip = failsafe
+            .check(&stats)
+            .expect("Should trip on default 105.0 ceiling even with initial NaN");
         assert_eq!(trip.current_temp_c, 106.0);
     }
 
