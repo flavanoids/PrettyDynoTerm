@@ -1,3 +1,4 @@
+pub mod backend;
 pub mod benchmark;
 pub mod cli;
 pub mod cpu;

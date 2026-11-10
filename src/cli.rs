@@ -1,3 +1,4 @@
+use crate::backend::BackendChoice;
 use crate::output::OutputFormat;
 use clap::Parser;
 
@@ -79,6 +80,10 @@ pub struct Args {
     /// Select GPU adapter by index
     #[arg(short, long)]
     pub gpu: Option<usize>,
+
+    /// Compute backend selection: "auto" (default), "wgpu", "cuda", or "hip"
+    #[arg(long, value_enum, default_value_t = BackendChoice::Auto)]
+    pub backend: BackendChoice,
 
     /// Target GPU selection: "all" (default) or comma-separated indices (e.g. "0,2,5")
     #[arg(long, default_value = "all")]

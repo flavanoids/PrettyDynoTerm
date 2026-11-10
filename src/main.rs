@@ -159,6 +159,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ExitCode::InvalidArgs.exit();
     }
 
+    // Resolve compute backend (auto, wgpu, cuda, hip)
+    let _compute_backend = match dyno_term::backend::resolve_backend(args.backend) {
+        Ok(b) => b,
+        Err(e) => {
+            output_emitter.emit_error("NoUsableGpu", &e.to_string(), ExitCode::NoUsableGpu);
+            ExitCode::NoUsableGpu.exit();
+        }
+    };
+
     // Enumerate available adapters and parse target GPU selection
     let all_adapters = GpuContext::list_adapters();
     if all_adapters.is_empty() {
