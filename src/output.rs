@@ -150,6 +150,8 @@ pub struct ProgressRecord {
     pub fps: f32,
     pub gpu_index: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub pci_bus_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gpu_temp_c: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gpu_power_w: Option<f32>,
@@ -180,9 +182,18 @@ impl ProgressRecord {
             progress_pct,
             fps,
             gpu_index,
+            pci_bus_id: None,
             gpu_temp_c,
             gpu_power_w,
         }
+    }
+
+    pub fn with_pci_bus_id(mut self, pci: impl Into<String>) -> Self {
+        let p = pci.into();
+        if !p.is_empty() {
+            self.pci_bus_id = Some(p);
+        }
+        self
     }
 }
 
@@ -202,9 +213,14 @@ pub struct GpuResultRecord {
     pub timestamp: String,
     pub gpu_index: usize,
     pub gpu_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pci_bus_id: Option<String>,
     pub score: f64,
     pub avg_fps: f64,
     pub one_percent_low_fps: f64,
+    pub is_outlier: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub outlier_reasons: Vec<String>,
     pub scenes: Vec<SceneResultRecord>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub peak_temp_c: Option<f32>,
@@ -230,13 +246,30 @@ impl GpuResultRecord {
             timestamp: current_iso_timestamp(),
             gpu_index,
             gpu_name: gpu_name.to_string(),
+            pci_bus_id: None,
             score,
             avg_fps,
             one_percent_low_fps,
+            is_outlier: false,
+            outlier_reasons: Vec::new(),
             scenes,
             peak_temp_c,
             peak_power_w,
         }
+    }
+
+    pub fn with_pci_bus_id(mut self, pci: impl Into<String>) -> Self {
+        let p = pci.into();
+        if !p.is_empty() {
+            self.pci_bus_id = Some(p);
+        }
+        self
+    }
+
+    pub fn with_outliers(mut self, is_outlier: bool, reasons: Vec<String>) -> Self {
+        self.is_outlier = is_outlier;
+        self.outlier_reasons = reasons;
+        self
     }
 }
 
@@ -249,11 +282,21 @@ pub struct SummaryRecord {
     pub status: String,
     pub overall_score: f64,
     pub elapsed_seconds: f64,
+    pub total_gpus: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub outlier_gpus: Vec<usize>,
     pub exit_code: i32,
 }
 
 impl SummaryRecord {
-    pub fn new(status: &str, overall_score: f64, elapsed_seconds: f64, exit_code: i32) -> Self {
+    pub fn new(
+        status: &str,
+        overall_score: f64,
+        elapsed_seconds: f64,
+        total_gpus: usize,
+        outlier_gpus: Vec<usize>,
+        exit_code: i32,
+    ) -> Self {
         Self {
             schema_version: SCHEMA_VERSION.to_string(),
             record_type: "summary".to_string(),
@@ -261,8 +304,21 @@ impl SummaryRecord {
             status: status.to_string(),
             overall_score,
             elapsed_seconds,
+            total_gpus,
+            outlier_gpus,
             exit_code,
         }
+    }
+
+    pub fn single(status: &str, overall_score: f64, elapsed_seconds: f64, exit_code: i32) -> Self {
+        Self::new(
+            status,
+            overall_score,
+            elapsed_seconds,
+            1,
+            Vec::new(),
+            exit_code,
+        )
     }
 }
 

@@ -166,6 +166,14 @@ impl TelemetryCollector {
         self.gpu_stats.read().ok()?.get(pci).cloned()
     }
 
+    /// Samples telemetry for a specific GPU by canonical PCI Bus ID, falling back to default stats.
+    pub fn sample_or_default(&self, pci: &PciBusId, default_gpu_name: &str) -> HardwareStats {
+        if let Some(stats) = self.sample_by_pci(pci) {
+            return stats;
+        }
+        self.sample(default_gpu_name)
+    }
+
     /// Returns a snapshot of all discovered physical GPU cards across the node.
     pub fn all_gpus(&self) -> Vec<HardwareStats> {
         match self.gpu_stats.read() {

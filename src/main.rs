@@ -3,7 +3,7 @@ use dyno_term::benchmark::{
     BenchmarkReport, DEFAULT_BASELINE_FILE, DEFAULT_HISTORY_FILE, compare_reports,
     format_comparison_table, format_history_table, load_baseline, load_history, save_baseline,
 };
-use dyno_term::cli::{Args, parse_resolution};
+use dyno_term::cli::{Args, parse_gpu_selection, parse_resolution};
 use dyno_term::gpu::{ComputePipelineManager, GpuContext};
 use dyno_term::output::{ExitCode, GpuStartInfo, OutputEmitter};
 use dyno_term::runner::{
@@ -159,18 +159,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ExitCode::InvalidArgs.exit();
     }
 
-    // Initialize GPU Context (exits with code 3 if no usable GPU/backend)
-    let mut gpu_ctx = match pollster::block_on(GpuContext::new(args.gpu)) {
-        Ok(ctx) => ctx,
-        Err(e) => {
-            output_emitter.emit_error("NoUsableGpu", &e.to_string(), ExitCode::NoUsableGpu);
-            ExitCode::NoUsableGpu.exit();
+    // Enumerate available adapters and parse target GPU selection
+    let all_adapters = GpuContext::list_adapters();
+    if all_adapters.is_empty() {
+        output_emitter.emit_error(
+            "NoUsableGpu",
+            "No compatible GPU adapter found on system",
+            ExitCode::NoUsableGpu,
+        );
+        ExitCode::NoUsableGpu.exit();
+    }
+
+    let selected_gpus = match parse_gpu_selection(&args.gpus, args.gpu, all_adapters.len()) {
+        Ok(gpus) => gpus,
+        Err(err) => {
+            if err.contains("out of bounds") || err.contains("No compatible GPU") {
+                output_emitter.emit_error("NoUsableGpu", &err, ExitCode::NoUsableGpu);
+                ExitCode::NoUsableGpu.exit();
+            } else {
+                output_emitter.emit_error("InvalidArgs", &err, ExitCode::InvalidArgs);
+                ExitCode::InvalidArgs.exit();
+            }
         }
     };
-
-    let mut device = Arc::clone(&gpu_ctx.device);
-    let mut queue = Arc::clone(&gpu_ctx.queue);
-    let mut adapter_info = gpu_ctx.adapter_info.clone();
 
     // Terminal preview dimensions
     let (term_cols, term_rows) = if headless {
@@ -190,6 +201,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Canonical internal compute resolution
     let (compute_w, compute_h) = parse_resolution(&args.res, term_width, term_pixel_height);
     let mut res_tag = format_resolution_tag(compute_w, compute_h);
+
+    let safe_max_temp = if args.max_temp.is_finite() && args.max_temp > 0.0 {
+        args.max_temp
+    } else {
+        105.0
+    };
+    let safe_target_temp =
+        if args.target_temp.is_finite() && (30.0..=90.0).contains(&args.target_temp) {
+            args.target_temp
+        } else {
+            55.0
+        };
+
+    // Fast-path: Multi-GPU Benchmark execution (spawns dedicated worker threads per GPU)
+    if run_benchmark_mode {
+        let telemetry = Arc::new(TelemetryCollector::new(
+            all_adapters[selected_gpus[0]].name.clone(),
+        ));
+        let multi_opts = dyno_term::runner::MultiGpuBenchmarkOptions {
+            selected_gpus,
+            frames_per_scene: args.frames,
+            compute_width: compute_w,
+            compute_height: compute_h,
+            res_tag: res_tag.clone(),
+            max_temp_c: safe_max_temp,
+            failsafe_enabled: !args.no_failsafe,
+            report_file: args.report_file.clone(),
+        };
+        let code = dyno_term::runner::run_multi_gpu_benchmark(
+            &multi_opts,
+            telemetry,
+            Arc::new(output_emitter),
+        )?;
+        code.exit();
+    }
+
+    // Initialize primary GPU Context for interactive modes (menu / demo / consistency / screenshot)
+    let primary_gpu_index = selected_gpus[0];
+    let mut gpu_ctx = match pollster::block_on(GpuContext::new_for_adapter_index(primary_gpu_index))
+    {
+        Ok(ctx) => ctx,
+        Err(e) => {
+            output_emitter.emit_error("NoUsableGpu", &e.to_string(), ExitCode::NoUsableGpu);
+            ExitCode::NoUsableGpu.exit();
+        }
+    };
+
+    let mut device = Arc::clone(&gpu_ctx.device);
+    let mut queue = Arc::clone(&gpu_ctx.queue);
+    let mut adapter_info = gpu_ctx.adapter_info.clone();
 
     // Initialize Compute Pipeline with chosen compute resolution
     let mut pipeline = match ComputePipelineManager::new(
@@ -236,18 +297,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         capture_screenshots(&mut pipeline, out_dir)?;
         ExitCode::Ok.exit();
     }
-
-    let safe_max_temp = if args.max_temp.is_finite() && args.max_temp > 0.0 {
-        args.max_temp
-    } else {
-        105.0
-    };
-    let safe_target_temp =
-        if args.target_temp.is_finite() && (30.0..=90.0).contains(&args.target_temp) {
-            args.target_temp
-        } else {
-            55.0
-        };
 
     if run_menu {
         let all_adapters = GpuContext::list_adapters();
@@ -486,25 +535,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         run_consistency_suite(&mut session, &opts)?;
         ExitCode::Ok.exit();
-    } else if run_benchmark_mode {
-        let mut session = TerminalSession {
-            pipeline: &mut pipeline,
-            renderer: &mut renderer,
-            telemetry: &telemetry,
-            adapter_info: &adapter_info,
-            output_emitter: &output_emitter,
-            term_width: term_width as usize,
-            term_height: term_pixel_height as usize,
-            res_tag: &res_tag,
-        };
-        let opts = BenchmarkOptions {
-            frames_per_scene: args.frames,
-            report_file: args.report_file.clone(),
-            max_temp_c: safe_max_temp,
-            failsafe_enabled: !args.no_failsafe,
-        };
-        let code = run_benchmark(&mut session, &opts)?;
-        code.exit();
     } else {
         let mut session = TerminalSession {
             pipeline: &mut pipeline,

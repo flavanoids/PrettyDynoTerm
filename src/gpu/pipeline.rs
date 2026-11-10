@@ -42,6 +42,7 @@ pub struct ComputePipelineManager {
     downsample_uniform_buffer: Buffer,
     preview_storage_buffer: Buffer,
     preview_staging_buffer: Buffer,
+    checksum_staging_buffer: Buffer,
     pub preview_width: u32,
     pub preview_height: u32,
 }
@@ -245,6 +246,13 @@ impl ComputePipelineManager {
             mapped_at_creation: false,
         });
 
+        let checksum_staging_buffer = device.create_buffer(&BufferDescriptor {
+            label: Some("Checksum Staging Buffer"),
+            size: 8,
+            usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         let downsample_bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("Downsample Bind Group"),
             layout: &downsample_bind_group_layout,
@@ -280,6 +288,7 @@ impl ComputePipelineManager {
             downsample_uniform_buffer,
             preview_storage_buffer,
             preview_staging_buffer,
+            checksum_staging_buffer,
             preview_width,
             preview_height,
         })
@@ -561,6 +570,55 @@ impl ComputePipelineManager {
         });
         self.device.poll(PollType::wait_indefinitely()).unwrap();
         let _ = rx.recv();
+    }
+
+    /// Pure GPU compute dispatch with 64-bit frame checksum readback (eliminates PCIe staging bottleneck).
+    pub fn render_compute_sync_with_checksum(&self, uniforms: &Uniforms) -> u64 {
+        self.queue
+            .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(uniforms));
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("Compute Sync Checksum Encoder"),
+            });
+
+        {
+            let mut compute_pass = encoder.begin_compute_pass(&ComputePassDescriptor {
+                label: Some("Compute Pass"),
+                timestamp_writes: None,
+            });
+            compute_pass.set_pipeline(&self.pipeline);
+            compute_pass.set_bind_group(0, &self.bind_group, &[]);
+            let workgroups_x = self.width.div_ceil(16);
+            let workgroups_y = self.height.div_ceil(16);
+            compute_pass.dispatch_workgroups(workgroups_x, workgroups_y, 1);
+        }
+
+        // Copy 8 bytes from storage buffer to checksum buffer
+        encoder.copy_buffer_to_buffer(&self.storage_buffer, 0, &self.checksum_staging_buffer, 0, 8);
+
+        self.queue.submit(Some(encoder.finish()));
+
+        let buffer_slice = self.checksum_staging_buffer.slice(..8);
+        let (tx, rx) = std::sync::mpsc::channel();
+        buffer_slice.map_async(MapMode::Read, move |res| {
+            let _ = tx.send(res);
+        });
+        self.device.poll(PollType::wait_indefinitely()).unwrap();
+        rx.recv()
+            .unwrap()
+            .expect("Failed to map checksum staging buffer");
+
+        let mapped = buffer_slice
+            .get_mapped_range()
+            .expect("Failed to get mapped range");
+        let mut bytes = [0u8; 8];
+        bytes.copy_from_slice(&mapped[..8]);
+        drop(mapped);
+        self.checksum_staging_buffer.unmap();
+
+        u64::from_le_bytes(bytes)
     }
 
     /// Asynchronous pure GPU compute dispatch (maximizes queue depth for uncapped stress testing).

@@ -2,12 +2,18 @@ pub mod benchmark;
 pub mod capture;
 pub mod consistency;
 pub mod demo;
+pub mod multi_gpu;
+pub mod outliers;
 pub mod session;
 
 pub use benchmark::{execute_benchmark_pass, print_scorecard, run_benchmark};
 pub use capture::capture_screenshots;
 pub use consistency::{format_box_line, run_consistency_suite, run_cooldown_screen};
 pub use demo::{SCENE_NAMES, run_interactive_demo};
+pub use multi_gpu::{
+    GpuRunResult, MultiGpuBenchmarkOptions, WorkerOutcome, run_multi_gpu_benchmark,
+};
+pub use outliers::{GpuRunStats, OutlierFlag, detect_gpu_outliers};
 pub use session::{
     BenchmarkOptions, BenchmarkPassOptions, BenchmarkPassResult, ConsistencyOptions,
     CooldownOptions, DemoOptions, TerminalSession,

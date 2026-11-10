@@ -72,6 +72,7 @@ Emitted at least once per second ($\ge 1\text{/s}$) during active GPU execution:
   "progress_pct": 45.0,
   "fps": 182.4,
   "gpu_index": 0,
+  "pci_bus_id": "0000:03:00.0",
   "gpu_temp_c": 58.0,
   "gpu_power_w": 115.0
 }
@@ -87,9 +88,12 @@ Emitted per GPU upon workload completion:
   "timestamp": "2026-11-10T14:30:15.890Z",
   "gpu_index": 0,
   "gpu_name": "AMD Radeon RX 6700 XT",
+  "pci_bus_id": "0000:03:00.0",
   "score": 14250.5,
   "avg_fps": 178.2,
   "one_percent_low_fps": 132.0,
+  "is_outlier": false,
+  "outlier_reasons": [],
   "scenes": [
     {
       "scene_id": 0,
@@ -114,6 +118,8 @@ Emitted as the final record when execution succeeds:
   "status": "ok",
   "overall_score": 14250.5,
   "elapsed_seconds": 15.887,
+  "total_gpus": 1,
+  "outlier_gpus": [],
   "exit_code": 0
 }
 ```

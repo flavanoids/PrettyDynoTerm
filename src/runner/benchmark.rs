@@ -422,7 +422,7 @@ pub fn run_benchmark(
             session.output_emitter.emit_jsonl(&gpu_res);
 
             // Emit SummaryRecord
-            let summary = crate::output::SummaryRecord::new(
+            let summary = crate::output::SummaryRecord::single(
                 "ok",
                 report.overall_score,
                 report.total_elapsed_seconds,

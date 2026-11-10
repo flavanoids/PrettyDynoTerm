@@ -1925,6 +1925,7 @@ mod tests {
             backend: wgpu::Backend::Vulkan,
             device_type: wgpu::DeviceType::DiscreteGpu,
             driver: "550.54.14".to_string(),
+            pci_bus_id: crate::telemetry::PciBusId::new("0000:01:00.0"),
         };
         let all_adapters = vec![adapter_info.clone()];
 
