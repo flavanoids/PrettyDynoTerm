@@ -1,7 +1,7 @@
 # PrettyDynoTerm
 
-> **Cross-Platform Terminal GPU & CPU Benchmark Engine**  
-> High-performance 4K offscreen 3D raymarching, fractal calculus, relativistic astrophysics, atmospheric vortex dynamics, and cardiac electrophysiology rendered directly inside your terminal in 24-bit TrueColor.
+> **Cross-Platform Terminal GPU & CPU Benchmark Engine & Datacenter Compute Stress Harness**  
+> High-performance 16K/4K offscreen 3D raymarching, fractal calculus, relativistic astrophysics, atmospheric vortex dynamics, and cardiac electrophysiology rendered directly inside your terminal in 24-bit TrueColor or streamed headlessly as JSON/JSONL.
 
 <p align="center">
   <img src="assets/screenshots/menu.png" alt="PrettyDynoTerm Interactive CLI Launcher" width="780" />
@@ -9,10 +9,16 @@
 
 ---
 
-## Benchmark Acts & Mathematical Models
+## Technical Documentation & Architecture
 
-> **Deep Technical Documentation**: For complete mathematical formulations, partial differential equations, WGSL compute dispatch mechanics, input/output specifications, and scientific use cases for every scene, see **[docs/SHADERS_AND_SCENES.md](docs/SHADERS_AND_SCENES.md)**.  
-> **Engineering Standard**: For contributing new benchmark scenes or tests, see the mandatory 7-stage specification pipeline in **[docs/SCENE_SPECIFICATION_STANDARD.md](docs/SCENE_SPECIFICATION_STANDARD.md)**.
+- **[docs/SHADERS_AND_SCENES.md](docs/SHADERS_AND_SCENES.md)**: Complete mathematical formulations, partial differential equations, WGSL compute dispatch mechanics, input/output specifications, and scientific use cases for every scene.
+- **[docs/OUTPUT_SCHEMA.md](docs/OUTPUT_SCHEMA.md)**: Full JSON Lines (JSONL) schema specification, stream event types (`start`, `progress`, `gpu_result`, `summary`, `error`, `cancelled`), and Linux exit codes.
+- **[docs/EMBEDDING.md](docs/EMBEDDING.md)**: Official host integration contract covering non-interactive headless guarantees, 2-second clean signal teardown, read-only working directory isolation, version introspection, and device masking.
+- **[docs/SCENE_SPECIFICATION_STANDARD.md](docs/SCENE_SPECIFICATION_STANDARD.md)**: Mandatory 7-stage specification pipeline for engineering new benchmark scenes.
+
+---
+
+## Benchmark Acts & Mathematical Models
 
 ### Act I: Atmospheric Ocean Waves (GPU)
 14 Gerstner wave octaves, trochoidal crests, 48-step adiabatic cumulus cloud deck, Clausius-Clapeyron saturation vapor thermodynamics, and Henyey-Greenstein Mie radiative transfer.
@@ -80,35 +86,31 @@ Hierarchical forward kinematics bipedal gait simulation evaluating 16-joint arti
 
 ## Core Engine Capabilities
 
-- **High-Performance 4K UHD Offscreen Compute**:
-  - Defaults to computing at **3840×2160 (4K UHD)**—computing over **8.29 million pixels** per frame!
-  - VRAM-native GPU compute downsampling to your terminal character grid using UTF-8 half-blocks (`▀`), providing extreme supersampling anti-aliasing (SSAA).
-- **First-Principles Scientific Physics & GPU Shared Memory (LDS) Tiling**:
-  - **Maritime Hydrodynamics (Act I)**: Full physical gravity-capillary wave dispersion ($\omega_i^2 = (gk_i + \frac{\gamma}{\rho} k_i^3)\tanh(k_i h)$) with water surface tension.
-  - **General Relativity (Act III)**: Boyer-Lindquist Kerr spacetime horizon metrics ($\Sigma = r^2 + a^2 \cos^2\theta$) and curvature-adaptive RK4 integration steps ($\Delta t(r)$).
-  - **Severe Storms (Act IV)**: Poisson dry adiabatic potential temperature ($\theta = T_0 (P/P_0)^{0.286}$) coupled to cyclostrophic pressure deficits and baroclinic updrafts.
-  - **Biomedical Cardiology (Act V)**: Aliev-Panfilov reaction-diffusion with an anisotropic myocardial conductivity tensor ($\mathbf{D} = \sigma_t \mathbf{I} + (\sigma_l - \sigma_t)\vec{f}\vec{f}^T$) at a realistic $4:1$ ratio.
-  - **GPU Microarchitecture Staging**: Workgroup-shared memory (LDS on AMD, Shared Memory on NVIDIA) cooperative tile caching (`var<workgroup> tile_cache`) with intra-workgroup barriers.
-  - **Celestial Astrophysics (Act VIII)**: Symplectic Leapfrog (Velocity Verlet) time integration preserving orbital energy and phase-space volume.
-- **Hardware Performance & Silicon Efficiency Metrics**:
-  - Real-time **Estimated TFLOPS** based on instruction counts across transcendental, ODE, and polynomial stages.
-  - **Effective VRAM Compute Bandwidth (GB/s)** tracking data movement across compute and downsample passes.
-  - **Energy Efficiency Index (Joules per Million Rays / Mray-Joules)** integrating telemetry board power draw.
-- **Dynamic VRAM Scaling & Headroom Safeguards (4GB to 200GB+ VRAM)**:
-  - Dynamically inspects host GPU memory limits, physical device VRAM, and active allocation state.
-  - Dynamically calculates tier targets (`Light`, `Balanced`, `Stress`, `MaxSafe`) scaling intelligently from 4GB/8GB consumer GPUs up to 80GB/200GB+ datacenter accelerators (e.g. NVIDIA H100/H200, AMD MI300X) without crashing or running out of memory.
-  - Zero-dimension and out-of-bounds guards across all CPU N-body, shader dispatch, and terminal downsampling buffers.
-  - Automatic fallback recovery gracefully protects workloads when user configurations exceed physical buffer limits.
-- **Cybernetic Telemetry HUD & Automated Hardware Assessment Engine**:
-  - Live GPU core clock (MHz), memory clock (MHz), core voltage ($V_{\text{core}}$ in mV), junction temperature (°C), board power (Watts), and VRAM utilization.
-  - Real-time CPU multi-core utilization sparkline and thread count.
-  - Frametime analysis with instantaneous FPS, average frametime, and 1% lows.
-  - **Automated GPU Sensor & Thermal Health Assessment**: Post-benchmark evaluation calculating die coupling delta ($\Delta T_{\text{hotspot}} = T_{\text{hotspot}} - T_{\text{edge}}$), thermal headroom to critical throttling limit ($T_{\text{crit}}$), acoustic fan RPM/PWM profiles, cooling efficiency ratings, and power limit checks.
-  - Continuous time-series sensor collection exported in structured JSON logs (`dyno_benchmark_results.json` and `dyno_consistency_results.json`).
-- **Deterministic Finite Benchmark**:
-  - Fixed-workload execution (not an imprecise timed run).
-  - Standardized score badge strictly comparable across systems.
-  - Comprehensive ANSI scorecard report featuring the automated GPU telemetry assessment block.
+- **High-Performance 16K / 4K UHD Offscreen Compute**:
+  - Internal compute engine supporting resolutions up to **16K Extreme UHD (15360×8640 = 132.7 Mpix/frame)**.
+  - VRAM-native GPU compute downsampling to terminal character grids using UTF-8 half-blocks (`▀`), providing extreme supersampling anti-aliasing (SSAA).
+  - In headless mode, PCIe readback is bypassed in favor of synchronous 8-byte GPU frame checksums, eliminating bus readback bottlenecks at massive resolutions.
+- **Concurrent Multi-GPU Scaling & Peer Outlier Detection**:
+  - Spawns independent worker threads and separate GPU device/queue contexts per physical adapter (`--gpus all` or `--gpus 0,2`).
+  - Thread barriers ensure coordinated launch across all devices without serializing compute dispatch.
+  - Automated fleet outlier detection identifies individual GPUs deviating $>5\%$ in throughput (slower) or $>8^\circ\text{C}$ in operating temperature (hotter) relative to peer medians.
+- **Pluggable Compute Backends (CUDA, HIP, wgpu)**:
+  - Runtime dynamic library loading (`dlopen`) for `libvulkan.so.1`, `libcuda.so.1`, `libnvidia-ml.so.1`, and `libamdhip64.so.6`.
+  - **Zero build-time linking** against vendor SDKs; starts cleanly on any node and gracefully degrades if a driver backend is absent.
+  - Pre-compiled embedded blobs for NVIDIA Hopper (`sm_90` PTX) and AMD Instinct (`gfx906`, `gfx908`, `gfx90a`, `gfx942` fat binaries) compiled from a unified C++ kernel source.
+- **Datacenter Preset & VRAM Headroom Protection**:
+  - `--preset datacenter`: Automatically targets 16K resolution and validates memory headroom against physical tiers (16 GB, 32 GB, 80 GB, 94 GB, 141 GB).
+  - Enforces strict memory limits: buffer allocations must not exceed $\le 75\%$ total VRAM and $\le 90\%$ live free VRAM.
+  - Debounced emergency thermal failsafe (3-sample breach window) with vendor-tailored ceilings for edge, junction/hotspot, and HBM memory.
+  - Passive cooling awareness: boards without fan tachometers (e.g. H200 NVL, MI100) automatically skip fan-stall tripwires without false positives.
+- **Headless Streaming & Host Supervisor Integration**:
+  - Non-interactive headless execution (`--headless`) works seamlessly over SSH without a pseudo-terminal (TTY) or when launched by systemd / daemon supervisors.
+  - Streams real-time JSON Lines (`--output jsonl`) emitting progress records ($\ge 1\text{/s}$ per GPU), hardware telemetry snapshots, and overall summary records.
+  - Clean signal teardown: intercepts `SIGINT` / `SIGTERM`, frees GPU allocations, emits a final `cancelled` JSONL record, and exits with code `4` within $\le 2.0$ seconds (guaranteed by an independent background watchdog thread).
+  - Strict read-only working directory isolation: when `--report-dir <DIR>` is omitted, the binary writes zero files to disk, running safely inside read-only containers (`chmod 555`).
+- **Flexible Execution Modes (Duration vs Fixed Frames)**:
+  - Deterministic fixed-frame benchmarking (`--frames N`, default 100).
+  - Fixed-duration profiling (`--duration SECONDS`): repeatedly cycles scenes ($0 \to 7 \to 0 \dots$) until time expires, reporting frame throughput (FPS) and aggregate work completed.
 
 <p align="center">
   <img src="assets/screenshots/scorecard.png" alt="PrettyDynoTerm Official Benchmark Scorecard" width="780" />
@@ -118,133 +120,193 @@ Hierarchical forward kinematics bipedal gait simulation evaluating 16-joint arti
 
 ## Installation & Building
 
+### 1. Standard Host Build
 ```bash
 git clone git@github.com:flavanoids/PrettyDynoTerm.git
 cd PrettyDynoTerm
 cargo build --release
 ```
-
 The compiled binary will be located at `./target/release/dyno_term`.
+
+### 2. Datacenter & Enterprise Linux Container Build ($\le \text{GLIBC } 2.28$)
+To build a portable binary that runs out-of-the-box on Debian 11 (glibc 2.31), Rocky Linux 8 (glibc 2.28), Ubuntu 20.04/22.04, and RHEL without host build dependencies:
+```bash
+./scripts/build_rocky8_binary.sh
+```
+This builds inside a Rocky Linux 8 container using Docker or Podman, producing `./dyno_term`.
+
+### 3. Static MUSL Build
+```bash
+cargo build --target x86_64-unknown-linux-musl --release
+```
+
+### 4. GLIBC Dependency Verification
+Verify that your binary strictly satisfies datacenter glibc symbol limits ($\le 2.31$):
+```bash
+./scripts/check_glibc_symbols.sh dyno_term
+```
 
 ---
 
 ## Usage
 
 ### 1. Interactive CLI Launcher Menu (Default)
-Simply running the binary without mode flags opens the full interactive terminal launcher:
+Running the binary without subcommand flags opens the interactive terminal launcher:
 ```bash
-./target/release/dyno_term
+./dyno_term
 ```
 - **Menu Features**:
   - **Launch Interactive Demo**: 60 FPS smooth preview with live telemetry HUD.
   - **Launch 100% Uncapped Stress Test**: Uncapped frame pipeline to peg GPU to 100% power and boost clock.
   - **Run Full Benchmark Suite**: Deterministic workload scoring with instant scorecard report.
-  - **Select Starting Scene**: Direct jump to Acts I through VI.
-  - **Compute Resolution Preset**: Switch on-the-fly between 16K, 8K, 4K UHD, 1440p, 1080p, 720p, Native Viewport, or Custom pixel dimensions.
-  - **Configure Benchmark Frames**: Preset or custom iterations per act.
-  - **Toggle Stress Mode**: Instant hotkey switch (`[U]`) between 60 FPS capped and uncapped.
+  - **Resolution Preset Switcher**: 16K, 8K, 4K UHD, 1440p, 1080p, 720p, Native Viewport, or Custom pixel dimensions.
   - **Switch GPU Adapter**: Switch WebGPU adapter between discrete GPUs, integrated GPUs, and CPU rasterizers.
-  - **Live Hardware Telemetry & Diagnostics**: 150ms real-time monitoring of GPU temp, board power draw, core clock, VRAM, and CPU load.
-- **Menu Controls**:
-  - `[↑ / ↓]` or `[k / j]` : Navigate menu options
-  - `[ENTER]` or `[SPACE]` : Select option / open submenu
-  - `[1 - 9, 0]` : Direct numeric hotkeys
-  - `[U]` : Toggle uncapped GPU stress mode
-  - `[Q]` or `[ESC]` : Exit menu
+  - **Live Hardware Telemetry**: 150ms real-time monitoring of GPU temp, board power draw, core clock, VRAM, and CPU load.
 
-### 2. Direct Interactive Demo Mode
+### 2. Headless Streaming Mode (`--headless --output jsonl`)
+Ideal for automated test pipelines, daemon runners, and remote execution:
 ```bash
-./target/release/dyno_term --demo
+./dyno_term --headless --benchmark --gpus all --preset datacenter --output jsonl
 ```
-- **In-Demo Controls**:
-  - `[SPACE]` : Switch between the 6 scenes
-  - `[U]` : Toggle between 60 FPS V-Sync and 100% Uncapped GPU Stress Mode
-  - `[Q]` or `[ESC]` : Exit
+Every event is emitted as a single line containing valid JSON and a `schema_version` field:
+- `start`: Workload configuration and detected GPU hardware adapters.
+- `progress`: Emitted $\ge 1\text{/s}$ per GPU with current scene, frame index, FPS, junction temperature, and board power.
+- `gpu_result`: Per-GPU score, average FPS, 1% low frametime, scene breakdown, and peer outlier flags.
+- `summary`: Overall node benchmark score, total elapsed time, active GPU count, and exit code.
+- `cancelled`: Emitted upon `SIGINT` / `SIGTERM` before exiting with code `4`.
 
-### 3. Direct Benchmark Suite
-Runs deterministic frames across all six acts and generates a scorecard:
+### 3. Multi-GPU Cluster Execution & Device Masking
+Run concurrent workloads across all installed accelerators or target specific cards:
 ```bash
-./target/release/dyno_term --benchmark
+# Run on all detected discrete GPUs
+./dyno_term --benchmark --gpus all
+
+# Run on specific GPU ordinals (e.g. GPU 0 and GPU 2)
+./dyno_term --benchmark --gpus 0,2
+
+# Transparent environment masking (honours vendor isolation variables)
+CUDA_VISIBLE_DEVICES=0,1 ./dyno_term --benchmark --gpus all
+HIP_VISIBLE_DEVICES=2,3 ./dyno_term --benchmark --gpus all
 ```
 
-### 4. Resolution Presets (Direct CLI)
+### 4. Continuous Fixed Duration Stress Mode (`--duration SECONDS`)
+Stress test accelerators for a fixed wall-clock time rather than a fixed frame count:
 ```bash
+# Stress all GPUs continuously for 60 seconds repeating scenes
+./dyno_term --headless --benchmark --gpus all --duration 60 --output jsonl
+
+# 10-minute burn-in at 16K datacenter preset
+./dyno_term --headless --benchmark --preset datacenter --duration 600 --output jsonl
+```
+
+### 5. Datacenter Node Smoke Test Script
+Validate node runtime libraries, driver ICD registrations, introspection metadata, and run a 5-second sanity benchmark across all GPUs in one step:
+```bash
+./scripts/node_smoke.sh
+```
+
+### 6. Binary Introspection & Version Metadata (`--version --output json`)
+Query binary version, git commit hash, supported backends, and SHA-256 cryptographic hashes of embedded compute kernels:
+```bash
+./dyno_term --version --output json
+```
+Example Output:
+```json
+{
+  "version": "1.0.0",
+  "git_commit": "133e902b4d1...",
+  "embedded_kernels": {
+    "cuda_ptx_sm90_sha256": "752449575a4c064f92f036a476beb93dbf353bc333c26d273a7b9f690941a57b",
+    "hip_co_gfx_sha256": "ae1eae69ccd8159bb569df23a0d8b1d90384d9daf982c9912a417e55c5710b9a",
+    "wgsl_shader_sha256": "051eee8f1bce54d8f81fae6b03140424daf14c619ec6b959ee8f844d734915e9"
+  },
+  "supported_backends": ["wgpu", "cuda", "hip"]
+}
+```
+
+### 7. Direct Interactive Demo Mode
+```bash
+./dyno_term --demo
+```
+- `[SPACE]` : Switch between scenes
+- `[U]` : Toggle between 60 FPS V-Sync and 100% Uncapped GPU Stress Mode
+- `[Q]` or `[ESC]` : Exit
+
+### 8. Resolution Presets (Direct CLI)
+```bash
+# Datacenter 16K Preset (15360x8640)
+./dyno_term --preset datacenter
+
 # 4K UHD (Default: 3840x2160)
-./target/release/dyno_term --res 4k
-
-# Extreme 16K UHD Stress (15360x8640)
-./target/release/dyno_term --res 16k
+./dyno_term --res 4k
 
 # 8K UHD (7680x4320)
-./target/release/dyno_term --res 8k
+./dyno_term --res 8k
 
 # 1440p QHD (2560x1440)
-./target/release/dyno_term --res 1440p
+./dyno_term --res 1440p
 
 # 1080p FHD (1920x1080)
-./target/release/dyno_term --res 1080p
+./dyno_term --res 1080p
 
 # 720p APU / Mobile (1280x720)
-./target/release/dyno_term --res 720p
+./dyno_term --res 720p
 ```
 
-### 5. Comprehensive Self-Test & System Diagnostics
-Verify CPU physics simulation, WGSL shader compilation, GPU compute passes, telemetry sensors, benchmark scoring, and terminal rendering directly from the CLI:
+### 9. Comprehensive Self-Test & System Diagnostics
 ```bash
-# Run comprehensive self-tests & hardware diagnostics
-./target/release/dyno_term --test
-
-# Alias
-./target/release/dyno_term --self-test
+./dyno_term --test
 ```
 
-### 6. Historical Runs & Baseline Comparison
-Track performance evolution, compare hardware upgrades, and detect thermal throttling across runs:
+### 10. Historical Runs & Reference Baseline Comparison
 ```bash
-# View chronological history table of all past runs
-./target/release/dyno_term --history
+# View chronological history table
+./dyno_term --history
 
-# Pin the latest run as reference baseline
-./target/release/dyno_term --set-baseline
+# Pin latest run as reference baseline
+./dyno_term --set-baseline
 
-# Or pin a specific JSON report as baseline
-./target/release/dyno_term --set-baseline my_golden_run.json
-
-# Compare any report against the active baseline
-./target/release/dyno_term --compare dyno_benchmark_results.json
+# Compare any report against reference baseline
+./dyno_term --compare dyno_benchmark_results.json
 ```
 
-### 7. Multi-Iteration Consistency & Thermal Stability Suite
-Directly built into the CLI and interactive menu to measure run-to-run consistency, standard deviation, coefficient of variation ($CV\%$), clock stability, and thermal throttling over successive benchmark runs with configurable idle cooldown pauses:
+### 11. Multi-Iteration Consistency & Thermal Stability Suite
 ```bash
-# Run 5-iteration consistency suite with 60-second idle cooldown pauses (default)
-./target/release/dyno_term --consistency
+# Run 5-iteration consistency suite with 60s cooldown pauses
+./dyno_term --consistency
 
-# Short alias: 3 iterations with 30s cooldown
-./target/release/dyno_term -c 3 --cooldown 30
+# 3 iterations with 30s cooldown
+./dyno_term -c 3 --cooldown 30
 
-# Full stress consistency: 5 iterations of ~1-minute runs at 4K UHD
-./target/release/dyno_term -c 5 --cooldown 60 -f 880 --res 4k
-
-# Pure back-to-back thermal heat-soak test (zero cooldown)
-./target/release/dyno_term -c 5 --cooldown 0
+# Back-to-back thermal heat-soak (0s cooldown)
+./dyno_term -c 5 --cooldown 0
 ```
-- **Live Terminal Cooldown Screen**: Displays an interactive progress bar and live telemetry (core temp, hotspot temp, clock, power, and real-time thermal dissipation delta).
-- **Controls**: Press `[Space]` or `[Enter]` during cooldown to skip immediately to the next iteration, or `[Esc]` / `[Q]` to complete early and generate the consistency report.
-- **Scorecard Output**: Generates an ANSI box-drawn summary with iteration tables, score standard deviation ($\pm \sigma$), Coefficient of Variation ($CV\%$), spread percentage, per-act framerate stability, and thermal/clock drift analysis. Saved to `dyno_consistency_results.json`.
+
+---
+
+## Process Exit Codes
+
+`dyno_term` returns standardized Linux exit codes:
+
+| Exit Code | Identifier | Semantic Description |
+| :---: | :--- | :--- |
+| **`0`** | `Ok` | Workload executed and validated successfully. |
+| **`1`** | `WorkloadFailure` | Workload failure (e.g. thermal tripwire breached, frame checksum mismatch). |
+| **`2`** | `InvalidArgs` | Invalid command line flags or arguments. |
+| **`3`** | `NoUsableGpu` | No compatible GPU adapter or backend found on system. |
+| **`4`** | `Cancelled` | Execution terminated cleanly by `SIGINT` or `SIGTERM` within 2 seconds. |
+| **`5`** | `InternalError` | Unexpected internal runtime panic or error. |
 
 ---
 
 ## Running Tests
 
-### Automated Developer Test Suite
 To run all unit and integration test suites:
 ```bash
 cargo test --all-targets
 ```
 
-### Comprehensive Test Runner Script
-To run both the full Cargo test suite and the binary self-test in one step:
+To run both the full Cargo test suite and binary self-tests in one step:
 ```bash
 ./scripts/run_tests.sh
 ```
