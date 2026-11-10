@@ -208,14 +208,12 @@ pub fn compute_consistency_report(
                 gpu_fan_rpm: last_run
                     .gpu_telemetry
                     .as_ref()
-                    .map(|t| t.fan_rpm.max as u32)
-                    .unwrap_or(0),
-                gpu_fan_max_rpm: 0,
+                    .map(|t| t.fan_rpm.max as u32),
+                gpu_fan_max_rpm: None,
                 gpu_fan_pwm: last_run
                     .gpu_telemetry
                     .as_ref()
-                    .map(|t| ((t.peak_fan_pwm_pct / 100.0) * 255.0) as u32)
-                    .unwrap_or(0),
+                    .map(|t| ((t.peak_fan_pwm_pct / 100.0) * 255.0) as u32),
                 gpu_power_w: last_run.peak_gpu_power_w,
                 gpu_power_cap_w: last_run
                     .gpu_telemetry
@@ -239,6 +237,8 @@ pub fn compute_consistency_report(
                 cpu_threads: last_run.system_info.cpu_threads,
                 peak_gpu_clock_mhz: last_run.peak_gpu_clock_mhz,
                 peak_gpu_util_pct: last_run.peak_gpu_util_pct,
+                gpu_mem_temp_crit_c: 0.0,
+                ..Default::default()
             };
             Some(super::telemetry::GpuTelemetryAssessment::evaluate(
                 &all_snapshots,

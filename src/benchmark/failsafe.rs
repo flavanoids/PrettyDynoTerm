@@ -104,27 +104,29 @@ impl ThermalFailsafe {
             });
         }
 
-        // 3. Cooling Fan Stall Detection Under Load
-        // If GPU temperature exceeds 78°C while fan tachometer reads 0 RPM and PWM is actively driven (>50)
-        if stats.gpu_temp_c >= self.fan_stall_threshold_c
-            && stats.gpu_fan_rpm == 0
-            && stats.gpu_fan_pwm > 50
-        {
-            self.fan_stall_consecutive_frames += 1;
-            // 20 consecutive frames of zero RPM under heavy heat indicates fan failure/deadlock
-            if self.fan_stall_consecutive_frames >= 20 {
-                return Some(ThermalTripReport {
-                    sensor_type: "Cooling Fan Tachometer".to_string(),
-                    current_temp_c: stats.gpu_temp_c,
-                    ceiling_temp_c: self.fan_stall_threshold_c,
-                    crit_limit_c: 0.0,
-                    message: format!(
-                        "Cooling fan stall detected: Fan reads 0 RPM while GPU silicon is {:.1}°C with PWM duty at {}",
-                        stats.gpu_temp_c, stats.gpu_fan_pwm
-                    ),
-                });
+        // 3. Cooling Fan Stall Detection Under Load (Active Fan Cards Only)
+        // Passively cooled boards (H200, H100, MI100, MI50) have no fan sensors: skip completely.
+        if let (Some(rpm), Some(pwm)) = (stats.gpu_fan_rpm, stats.gpu_fan_pwm) {
+            if stats.gpu_temp_c >= self.fan_stall_threshold_c && rpm == 0 && pwm > 50 {
+                self.fan_stall_consecutive_frames += 1;
+                // 20 consecutive frames of zero RPM under heavy heat indicates fan failure/deadlock
+                if self.fan_stall_consecutive_frames >= 20 {
+                    return Some(ThermalTripReport {
+                        sensor_type: "Cooling Fan Tachometer".to_string(),
+                        current_temp_c: stats.gpu_temp_c,
+                        ceiling_temp_c: self.fan_stall_threshold_c,
+                        crit_limit_c: 0.0,
+                        message: format!(
+                            "Cooling fan stall detected: Fan reads 0 RPM while GPU silicon is {:.1}°C with PWM duty at {}",
+                            stats.gpu_temp_c, pwm
+                        ),
+                    });
+                }
+            } else {
+                self.fan_stall_consecutive_frames = 0;
             }
         } else {
+            // No fan sensors present: not applicable, never stalled
             self.fan_stall_consecutive_frames = 0;
         }
 
@@ -509,8 +511,8 @@ mod tests {
             gpu_hotspot_c: 75.0,
             gpu_temp_crit_c: 100.0,
             gpu_hotspot_crit_c: 110.0,
-            gpu_fan_rpm: 1500,
-            gpu_fan_pwm: 100,
+            gpu_fan_rpm: Some(1500),
+            gpu_fan_pwm: Some(100),
             ..Default::default()
         };
 
@@ -590,8 +592,8 @@ mod tests {
         let stats = HardwareStats {
             gpu_temp_c: 80.0,
             gpu_hotspot_c: 85.0,
-            gpu_fan_rpm: 0,
-            gpu_fan_pwm: 180, // Driver demanding fan
+            gpu_fan_rpm: Some(0),
+            gpu_fan_pwm: Some(180), // Driver demanding fan
             ..Default::default()
         };
 
@@ -602,6 +604,26 @@ mod tests {
 
         let trip = failsafe.check(&stats).expect("Should trip on fan stall");
         assert_eq!(trip.sensor_type, "Cooling Fan Tachometer");
+    }
+
+    #[test]
+    fn test_thermal_failsafe_fan_stall_skipped_when_no_fan() {
+        let mut failsafe = ThermalFailsafe::new(105.0, true);
+        let stats = HardwareStats {
+            gpu_temp_c: 85.0, // High temperature below 95 edge limit
+            gpu_hotspot_c: 90.0,
+            gpu_fan_rpm: None,
+            gpu_fan_pwm: None,
+            ..Default::default()
+        };
+
+        // Even across 50 frames, fan stall check must be skipped for passively cooled card
+        for _ in 0..50 {
+            assert!(
+                failsafe.check(&stats).is_none(),
+                "Passively cooled card must never trigger fan stall"
+            );
+        }
     }
 
     #[test]

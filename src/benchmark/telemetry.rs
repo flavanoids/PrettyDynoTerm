@@ -174,7 +174,7 @@ impl GpuTelemetryAssessment {
         };
 
         let fan_metric = if fan_rpms.is_empty() {
-            SensorMetric::from_samples(&[final_stats.gpu_fan_rpm as f32])
+            SensorMetric::from_samples(&[final_stats.gpu_fan_rpm.unwrap_or(0) as f32])
         } else {
             SensorMetric::from_samples(&fan_rpms)
         };
@@ -191,7 +191,7 @@ impl GpuTelemetryAssessment {
             SensorMetric::from_samples(&mem_utils)
         };
 
-        let peak_fan_pwm = (final_stats.gpu_fan_pwm as f32 / 255.0) * 100.0;
+        let peak_fan_pwm = (final_stats.gpu_fan_pwm.unwrap_or(0) as f32 / 255.0) * 100.0;
         let delta_hotspot_edge_c = if hotspot_metric.max > 0.0 && edge_metric.max > 0.0 {
             (hotspot_metric.max - edge_metric.max).max(0.0)
         } else {
@@ -427,9 +427,9 @@ mod tests {
             gpu_mem_temp_c: 68.0,
             gpu_temp_crit_c: 100.0,
             gpu_hotspot_crit_c: 110.0,
-            gpu_fan_rpm: 1450,
-            gpu_fan_max_rpm: 3200,
-            gpu_fan_pwm: 115,
+            gpu_fan_rpm: Some(1450),
+            gpu_fan_max_rpm: Some(3200),
+            gpu_fan_pwm: Some(115),
             gpu_power_w: 143.0,
             gpu_power_cap_w: 157.0,
             vram_used_mb: 4096,
@@ -441,6 +441,7 @@ mod tests {
             cpu_threads: 16,
             peak_gpu_clock_mhz: 2650,
             peak_gpu_util_pct: 100.0,
+            ..Default::default()
         };
 
         let snapshots = vec![
@@ -510,9 +511,9 @@ mod tests {
             gpu_mem_temp_c: 95.0,
             gpu_temp_crit_c: 100.0,
             gpu_hotspot_crit_c: 110.0,
-            gpu_fan_rpm: 3200,
-            gpu_fan_max_rpm: 3200,
-            gpu_fan_pwm: 255,
+            gpu_fan_rpm: Some(3200),
+            gpu_fan_max_rpm: Some(3200),
+            gpu_fan_pwm: Some(255),
             gpu_power_w: 160.0,
             gpu_power_cap_w: 160.0,
             vram_used_mb: 7000,
@@ -524,6 +525,7 @@ mod tests {
             cpu_threads: 16,
             peak_gpu_clock_mhz: 2600,
             peak_gpu_util_pct: 100.0,
+            ..Default::default()
         };
 
         let snapshots = vec![

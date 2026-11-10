@@ -879,10 +879,17 @@ impl CliMenu {
         self.buf.push_str("\r\n");
 
         let telem_badge = if stats.gpu_temp_c > 0.0 {
-            format!(
-                "[ {:.0}°C · {:.0}W · {} RPM ]",
-                stats.gpu_temp_c, stats.gpu_power_w, stats.gpu_fan_rpm
-            )
+            if let Some(rpm) = stats.gpu_fan_rpm {
+                format!(
+                    "[ {:.0}°C · {:.0}W · {} RPM ]",
+                    stats.gpu_temp_c, stats.gpu_power_w, rpm
+                )
+            } else {
+                format!(
+                    "[ {:.0}°C · {:.0}W · Passive ]",
+                    stats.gpu_temp_c, stats.gpu_power_w
+                )
+            }
         } else {
             "[ Sensor Diagnostics ]".to_string()
         };
@@ -1403,10 +1410,10 @@ impl CliMenu {
         } else {
             "Board PPT".to_string()
         };
-        let fan_str = if stats.gpu_fan_rpm > 0 {
-            format!("{} RPM", stats.gpu_fan_rpm)
-        } else {
-            "0 RPM (Zero-RPM Idle)".to_string()
+        let fan_str = match stats.gpu_fan_rpm {
+            Some(rpm) if rpm > 0 => format!("{} RPM", rpm),
+            Some(_) => "0 RPM (Zero-RPM Idle)".to_string(),
+            None => "N/A (Passive Cooling)".to_string(),
         };
         let cooling_val = format!(
             "\x1b[38;2;255;255;255m{}\x1b[0m \x1b[38;2;140;150;170m•\x1b[0m \x1b[38;2;255;180;0;1m{:.1} W\x1b[0m \x1b[38;2;140;150;170m(Cap: {})\x1b[0m",

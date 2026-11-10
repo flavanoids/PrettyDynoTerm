@@ -338,6 +338,7 @@ dependencies = [
  "clap",
  "crossterm",
  "libc",
+ "libloading",
  "pollster",
  "rayon",
  "serde",

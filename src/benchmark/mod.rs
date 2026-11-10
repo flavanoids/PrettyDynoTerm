@@ -200,7 +200,7 @@ impl BenchmarkScorer {
             } else {
                 0.0
             };
-            let fan_pwm_pct = (stats.gpu_fan_pwm as f32 / 255.0) * 100.0;
+            let fan_pwm_pct = (stats.gpu_fan_pwm.unwrap_or(0) as f32 / 255.0) * 100.0;
 
             self.snapshots.push(TelemetrySnapshot {
                 elapsed_sec,
@@ -215,7 +215,7 @@ impl BenchmarkScorer {
                 edge_temp_c: stats.gpu_temp_c,
                 hotspot_temp_c: stats.gpu_hotspot_c,
                 mem_temp_c: stats.gpu_mem_temp_c,
-                fan_rpm: stats.gpu_fan_rpm,
+                fan_rpm: stats.gpu_fan_rpm.unwrap_or(0),
                 fan_pwm_pct,
                 board_power_w: stats.gpu_power_w,
                 vram_used_mb: stats.vram_used_mb,

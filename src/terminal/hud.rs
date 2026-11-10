@@ -669,9 +669,9 @@ mod tests {
             gpu_mem_temp_c: 78.0,
             gpu_temp_crit_c: 100.0,
             gpu_hotspot_crit_c: 110.0,
-            gpu_fan_rpm: 1450,
-            gpu_fan_max_rpm: 3200,
-            gpu_fan_pwm: 115,
+            gpu_fan_rpm: Some(1450),
+            gpu_fan_max_rpm: Some(3200),
+            gpu_fan_pwm: Some(115),
             gpu_power_w: 148.0,
             gpu_power_cap_w: 157.0,
             vram_used_mb: 5500,
@@ -683,6 +683,7 @@ mod tests {
             cpu_threads: 16,
             peak_gpu_clock_mhz: 2668,
             peak_gpu_util_pct: 99.0,
+            ..Default::default()
         };
 
         for width in 50..=200 {
