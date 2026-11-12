@@ -8,3 +8,12 @@ dyno_baseline*.json
 *.log
 consistency_runs/
 .DS_Store
+__pycache__/
+*.pyc
+
+# Scratch, draft, and temporary documentation (do not commit)
+*.draft.md
+*.scratch.md
+*.tmp.md
+docs/drafts/
+docs/scratch/

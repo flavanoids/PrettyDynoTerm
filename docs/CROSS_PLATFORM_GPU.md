@@ -1,6 +1,10 @@
-# Cross-Platform GPU & Compute Engine
+<!-- DO NOT COMMIT -->
+# [DEPRECATED / UNNECESSARY] Cross-Platform GPU & Compute Engine
 
-One of `dyno_term`'s primary design goals is unified, high-performance execution across **Linux (AMD, Nvidia, Intel)** and **macOS (Apple Silicon M1–M4 & Intel Mac)** without vendor lock-in or display server dependencies.
+> [!WARNING]
+> **DO NOT COMMIT / REDUNDANT DOCUMENTATION**
+> This document is deprecated and redundant. Its contents have been consolidated and superseded by [docs/ARCHITECTURE.md](ARCHITECTURE.md) and [docs/EMBEDDING.md](EMBEDDING.md).
+> Retained only as an uncommitted local reference; do not commit in future release revisions.
 
 ---
 
@@ -36,7 +40,7 @@ AMD (RADV)      Nvidia (NVK) Intel (ANV)            Apple Silicon      Intel Mac
 
 Accurate hardware monitoring is critical for thermal and power profiling during a benchmark run.
 
-### Linux Telemetry Engine (`src/telemetry.rs`):
+### Linux Telemetry Engine (`src/telemetry/`):
 - **GPU Core Frequency**: Read directly from `/sys/class/drm/card*/device/hwmon/hwmon*/freq1_input` (Hz $\to$ MHz).
 - **GPU Temperatures**: Edge, junction, and memory temperatures parsed from `temp1_input`, `temp2_input` (millidegrees C $\to$ °C).
 - **GPU Board Power**: Average board power consumption read from `power1_average` (microwatts $\to$ Watts).

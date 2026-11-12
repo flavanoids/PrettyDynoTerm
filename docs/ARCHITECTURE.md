@@ -84,7 +84,7 @@ To guarantee hardware stability and deterministic benchmark scoring across diver
      - **Benchmark Math & Scorer**: Tests frametime accumulation, 1% low calculations, arithmetic scene weighting, and JSON report round-tripping.
      - **Terminal Engine**: Tests resolution tags, ANSI sequence stripping, and half-block TrueColor rasterizer initialization.
 2. **Automated Developer Test Harness (`cargo test`)**:
-   - 67 automated unit and integration tests covering unit logic (`src/lib.rs`), CLI parsing (`tests/cli_tests.rs`), and GPU context execution (`tests/pipeline_integration.rs`).
+   - Comprehensive automated unit and integration test suites covering unit logic (`src/lib.rs`), CLI parsing (`tests/cli_tests.rs`), multi-GPU concurrency (`tests/multi_gpu_tests.rs`), telemetry integration (`tests/telemetry_tests.rs`), exit codes (`tests/exit_code_tests.rs`), and GPU context execution (`tests/pipeline_integration.rs`).
    - Run in one step via `./scripts/run_tests.sh`.
 
 ---
@@ -107,20 +107,33 @@ To reliably support GPUs spanning 4GB/8GB entry-level discrete hardware up to 20
 
 ---
 
-## 7. Decoupled Runner Architecture (`src/runner/`)
+## 7. Decoupled Runner & Backend Architecture
 
-To eliminate the "god-file" anti-pattern and avoid argument explosion across the application lifecycle, execution is decoupled into dedicated runner modules:
+To eliminate the "god-file" anti-pattern and maintain clean modular separation of concerns, execution and compute backends are decoupled into dedicated modules:
 
 ```
 src/
-├── main.rs                   # Lightweight CLI entrypoint & menu dispatcher (< 300 lines)
-├── runner/
+├── main.rs                   # CLI entrypoint, argument parsing, & signal/headless dispatcher
+├── backend/                  # Dynamic ComputeBackend trait (CUDA, HIP, WGPU)
+│   ├── mod.rs                # Backend dispatch & autodetection
+│   ├── traits.rs             # ComputeBackend & ComputeDevice abstractions
+│   ├── cuda.rs               # Dynamic libcuda.so.1 dlopen & PTX dispatch
+│   ├── hip.rs                # Dynamic libamdhip64.so dlopen & CO dispatch
+│   └── wgpu_backend.rs       # Cross-platform WebGPU compute pipeline
+├── runner/                   # Execution runners & workload supervisors
 │   ├── mod.rs                # Runner interface & re-exports
 │   ├── session.rs            # TerminalSession context & option structs
 │   ├── demo.rs               # Interactive demo loop & event processing
 │   ├── benchmark.rs          # Finite deterministic benchmark pass execution & scorecards
 │   ├── consistency.rs        # Multi-iteration consistency suite & thermal cooldown screens
+│   ├── multi_gpu.rs          # Concurrent multi-device orchestration & thread barriers
+│   ├── outliers.rs           # Multi-GPU fleet outlier detection
 │   └── capture.rs            # Headless screenshot rendering & PPM output
+├── telemetry/                # Hardware sensor layer keyed by PCI bus ID
+│   ├── mod.rs                # TelemetryCollector supervisor
+│   ├── nvml.rs               # Dynamic libnvidia-ml.so.1 dlopen
+│   ├── amd_sysfs.rs          # Linux DRM sysfs & hwmon polling
+│   └── pci.rs                # PCI bus ID canonical normalization
 ```
 
 By packaging session dependencies (`pipeline`, `renderer`, `telemetry`, `adapter_info`, `term_width`, `term_height`, `res_tag`) into `TerminalSession<'a>` and encapsulating workload settings into typed options (`DemoOptions`, `BenchmarkOptions`, `ConsistencyOptions`), runner functions maintain low cyclomatic complexity, clear boundaries, and strict compliance with zero-warning lint standards.

@@ -203,7 +203,7 @@ fn test_duration_flag_execution() {
                 .and_then(|e| e.as_f64())
                 .unwrap_or(0.0);
             assert!(
-                elapsed >= 0.8 && elapsed <= 3.0,
+                (0.8..=3.0).contains(&elapsed),
                 "Duration should be close to 1 second, got: {}",
                 elapsed
             );

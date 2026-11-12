@@ -58,15 +58,15 @@ Host orchestrators query binary capabilities, git commit lineage, and embedded c
 dyno_term --version --output json
 ```
 
-### JSON Response Schema:
+### JSON Response Schema (Example):
 ```json
 {
-  "version": "1.0.0",
-  "git_commit": "1b04503eba283f13d7bb5f59c8cfdbb69fb6d207",
+  "version": "<CARGO_PKG_VERSION>",
+  "git_commit": "<40-character-sha1-commit-hash>",
   "embedded_kernels": {
-    "cuda_ptx_sm90_sha256": "752449575a4c064f92f036a476beb93dbf353bc333c26d273a7b9f690941a57b",
-    "hip_co_gfx_sha256": "ae1eae69ccd8159bb569df23a0d8b1d90384d9daf982c9912a417e55c5710b9a",
-    "wgsl_shader_sha256": "051eee8f1bce54d8f81fae6b03140424daf14c619ec6b959ee8f844d734915e9"
+    "cuda_ptx_sm90_sha256": "<64-hex-sha256-ptx>",
+    "hip_co_gfx_sha256": "<64-hex-sha256-fatbin>",
+    "wgsl_shader_sha256": "<64-hex-sha256-wgsl>"
   },
   "supported_backends": [
     "wgpu",
@@ -76,7 +76,8 @@ dyno_term --version --output json
 }
 ```
 
-- **`git_commit`**: Full 40-character SHA-1 hash of the git commit used to compile the binary.
+- **`version`**: Current package version dynamically extracted from `Cargo.toml`.
+- **`git_commit`**: Full 40-character SHA-1 hash of the git commit used to compile the binary (injected at build time by `build.rs`).
 - **`embedded_kernels`**: Cryptographic SHA-256 digests of the embedded PTX (`sm_90`), HIP fat binary (`gfx906`, `gfx908`, `gfx90a`, `gfx942`), and unified WGSL shader.
 - **`supported_backends`**: Backends supported by this binary build.
 
