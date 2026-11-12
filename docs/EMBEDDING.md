@@ -145,8 +145,14 @@ Build in a Rocky Linux 8 (glibc 2.28) container:
 ```
 This guarantees all dynamic libc bindings (`pthread`, `dlopen`, `stat`, `math`) resolve against `GLIBC_2.28` or lower, running out-of-the-box on Debian 11 (2.31), Ubuntu 20.04/22.04, RHEL/Rocky 8/9, and newer.
 
-### 7.2 Static MUSL Build
-Alternatively, compile a static PIE binary with zero glibc dependencies:
+### 7.2 Static MUSL Build & Zero-Dependency Fleet Packaging
+Compile a static PIE binary with zero glibc dependencies and package it for fleet deployment (no Docker, Podman, or Alpine required):
+```bash
+./scripts/package_release.sh
+```
+This runs `cargo build --target x86_64-unknown-linux-musl --release`, verifies dynamic isolation via `check_glibc_symbols.sh`, strips symbols (~7.6 MB binary), and archives it into `dist/dyno_term-v<VERSION>-linux-x86_64.tar.gz` (~3.1 MB) with SHA-256 checksums.
+
+Or compile manually:
 ```bash
 cargo build --target x86_64-unknown-linux-musl --release
 ```

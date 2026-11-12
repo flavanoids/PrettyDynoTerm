@@ -8,7 +8,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DYNO_BIN="${1:-$REPO_ROOT/dyno_term}"
 
 if [ ! -f "$DYNO_BIN" ]; then
-    if [ -f "$REPO_ROOT/target/release/dyno_term" ]; then
+    if [ -f "$REPO_ROOT/target/x86_64-unknown-linux-musl/release/dyno_term" ]; then
+        DYNO_BIN="$REPO_ROOT/target/x86_64-unknown-linux-musl/release/dyno_term"
+    elif [ -f "$REPO_ROOT/target/release/dyno_term" ]; then
         DYNO_BIN="$REPO_ROOT/target/release/dyno_term"
     elif [ -f "$REPO_ROOT/target/rocky8/release/dyno_term" ]; then
         DYNO_BIN="$REPO_ROOT/target/rocky8/release/dyno_term"

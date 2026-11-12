@@ -135,7 +135,17 @@ To build a portable binary that runs out-of-the-box on Debian 11 (glibc 2.31), R
 ```
 This builds inside a Rocky Linux 8 container using Docker or Podman, producing `./dyno_term`.
 
-### 3. Static MUSL Build
+### 3. Static MUSL Build & Zero-Dependency Distribution Packaging
+To compile a fully static binary with zero glibc dependencies and package it into a self-contained tarball for fleet deployment (no Docker/Podman or Alpine required):
+```bash
+./scripts/package_release.sh
+```
+This produces:
+- Standalone static binary: `./dyno_term` (and `./dist/dyno_term-v<VERSION>-linux-x86_64/dyno_term`, ~7.6 MB stripped)
+- Fleet deployment tarball: `./dist/dyno_term-v<VERSION>-linux-x86_64.tar.gz` (~3.1 MB)
+- Checksum: `./dist/dyno_term-v<VERSION>-linux-x86_64.tar.gz.sha256`
+
+Or build manually via cargo:
 ```bash
 cargo build --target x86_64-unknown-linux-musl --release
 ```
